@@ -13,17 +13,16 @@ import type {
 
 export function GlobeWorkspace({
   city,
-  onCityChange,
   visible,
   overlay,
   selected,
   selectedNoradId,
   selectedOmm,
   onSelect,
+  onDemoPick,
   loading,
   source,
   stale,
-  catalogError,
   workerError,
   enrichmentHalt,
   showSidebarTrigger,
@@ -31,17 +30,16 @@ export function GlobeWorkspace({
   onHorizonOnlyChange,
 }: {
   city: City;
-  onCityChange: (cityId: string) => void;
   visible: VisibleSatellite[];
   overlay: SatelliteOverlayMap;
   selected: VisibleSatellite | null;
   selectedNoradId: string | null;
   selectedOmm: SlimOmm | null;
   onSelect: (noradId: string | null) => void;
+  onDemoPick: () => void;
   loading: boolean;
   source: CatalogSource | undefined;
   stale: boolean;
-  catalogError?: string;
   workerError: string | null;
   enrichmentHalt?: EnrichmentHalt | null;
   showSidebarTrigger: boolean;
@@ -58,13 +56,12 @@ export function GlobeWorkspace({
         visible={visible}
       />
       <SkyHud
-        catalogError={catalogError}
         city={city}
         enrichmentHalt={enrichmentHalt}
         horizonOnly={horizonOnly}
         loading={loading}
-        onCityChange={onCityChange}
         onHorizonOnlyChange={onHorizonOnlyChange}
+        onDemoPick={onDemoPick}
         onSelect={onSelect}
         overlay={overlay}
         selected={selected}

@@ -3,13 +3,12 @@
 import { SatelliteInspector } from "@/components/sky/satellite-inspector";
 import { SatelliteSearch } from "@/components/sky/satellite-search";
 import { SatelliteTelemetry } from "@/components/sky/satellite-telemetry";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Switch } from "@/components/ui/switch";
 import type { EnrichmentHalt } from "@/lib/cala";
-import { EUROPEAN_CITIES, type City } from "@/lib/geo/cities";
-import { CELESTRAK_STALE_MESSAGE, UNKNOWN_OWNER_COLOR } from "@/lib/orbit/constants";
-import { headlineCounter, ownerLegend } from "@/lib/orbit/overlay";
+import type { City } from "@/lib/geo/cities";
+import { UNKNOWN_OWNER_COLOR } from "@/lib/orbit/constants";
+import { evidenceCoverage, ownerLegend } from "@/lib/orbit/overlay";
 import type {
   CatalogSource,
   SatelliteOverlayMap,
@@ -27,6 +26,9 @@ function statusLabel(args: {
 }) {
   if (args.loading) return { label: "Loading", tone: "bg-amber-500" };
   if (args.workerError) return { label: "Worker error", tone: "bg-red-500" };
+  if (args.source === "local") {
+    return { label: "Local", tone: "bg-emerald-500" };
+  }
   if (args.source === "seed" || args.stale) {
     return { label: "Cached", tone: "bg-amber-500" };
   }
@@ -36,32 +38,17 @@ function statusLabel(args: {
   return { label: "Offline", tone: "bg-red-500" };
 }
 
-/**
- * Plain-language Cached reason. CelesTrak 403 → ~2h no-retry → disk snapshot
- * or bundled seed. Never put this in the globe center.
- */
-function cacheExplanation(
-  source: CatalogSource | undefined,
-  stale: boolean,
-  catalogError?: string,
-): string | null {
-  if (source === "seed") {
-    return "CelesTrak returned 403. Showing the bundled demo catalog, not the live sky. We wait about 2 hours before asking again.";
-  }
-  if (source === "stale" || stale) {
-    const detail = catalogError?.trim();
-    return detail && detail.length > 0 ? detail : CELESTRAK_STALE_MESSAGE;
-  }
-  return null;
-}
-
-function enrichmentHaltLabel(halt: EnrichmentHalt): string {
-  if (halt.message.trim()) return halt.message;
-  if (halt.code === "rate_limited") return "Cala rate limited (429). Ownership enrichment paused.";
-  if (halt.code === "timeout") return "Cala timed out. Ownership enrichment paused.";
-  if (halt.code === "unconfigured") return "Cala is not configured. Ownership enrichment paused.";
-  if (halt.code === "unreachable") return "Cala is unreachable. Ownership enrichment paused.";
-  return "Ownership enrichment paused.";
+function enrichmentHaltLabel(
+  halt: EnrichmentHalt,
+  hasCachedEvidence: boolean,
+): string {
+  const fallback = hasCachedEvidence
+    ? "Showing cached Cala evidence; unsupported claims remain unknown."
+    : "Unsupported claims remain unknown.";
+  if (halt.code === "rate_limited") return `Live Cala is resting. ${fallback}`;
+  if (halt.code === "timeout") return `Live Cala timed out. ${fallback}`;
+  if (halt.code === "unconfigured") return `Live Cala is not configured. ${fallback}`;
+  return `Live Cala is unavailable. ${fallback}`;
 }
 
 function UtcClock() {
@@ -105,16 +92,15 @@ function HudChrome({
 
 export function SkyHud({
   city,
-  onCityChange,
   visible,
   overlay,
   selected,
   selectedOmm,
   onSelect,
+  onDemoPick,
   loading,
   source,
   stale,
-  catalogError,
   workerError,
   enrichmentHalt,
   showSidebarTrigger,
@@ -122,16 +108,15 @@ export function SkyHud({
   onHorizonOnlyChange,
 }: {
   city: City;
-  onCityChange: (cityId: string) => void;
   visible: VisibleSatellite[];
   overlay: SatelliteOverlayMap;
   selected: VisibleSatellite | null;
   selectedOmm: SlimOmm | null;
   onSelect: (noradId: string | null) => void;
+  onDemoPick: () => void;
   loading: boolean;
   source: CatalogSource | undefined;
   stale: boolean;
-  catalogError?: string;
   workerError: string | null;
   enrichmentHalt?: EnrichmentHalt | null;
   showSidebarTrigger: boolean;
@@ -139,31 +124,29 @@ export function SkyHud({
   onHorizonOnlyChange: (horizonOnly: boolean) => void;
 }) {
   const status = statusLabel({ loading, source, stale, workerError });
-  const headline = headlineCounter(visible, overlay);
+  const coverage = evidenceCoverage(visible, overlay);
   const legend = ownerLegend(visible, overlay);
-  const cachedWhy = cacheExplanation(source, stale, catalogError);
+  const hasCachedEvidence = Object.values(overlay).some(
+    (entry) =>
+      entry.evidenceState !== "unknown" &&
+      entry.sources?.some((sourceEntry) => sourceEntry.url.trim()),
+  );
 
   return (
     <div className="dark pointer-events-none absolute inset-0 z-10 p-3 sm:p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 max-w-full flex-col gap-2">
           <div className="pointer-events-auto">
-            <SatelliteSearch onSelect={onSelect} selected={selected} visible={visible} />
+            <SatelliteSearch
+              onDemoPick={onDemoPick}
+              onSelect={onSelect}
+              selected={selected}
+              visible={visible}
+            />
           </div>
           <HudChrome className="flex max-w-full flex-wrap items-center gap-2 px-2 py-1.5">
             {showSidebarTrigger ? <SidebarTrigger className="-ml-0.5" /> : null}
-            <NativeSelect
-              aria-label="Observer city"
-              onChange={(event) => onCityChange(event.target.value)}
-              size="sm"
-              value={city.id}
-            >
-              {EUROPEAN_CITIES.map((entry) => (
-                <NativeSelectOption key={entry.id} value={entry.id}>
-                  {entry.name}
-                </NativeSelectOption>
-              ))}
-            </NativeSelect>
+            <span className="px-1 text-[11px] text-foreground">{city.name}</span>
             <span className="hidden h-4 w-px bg-border sm:block" />
             <UtcClock />
             <span className="flex items-center gap-1.5 pr-1 text-[11px] text-muted-foreground">
@@ -185,14 +168,6 @@ export function SkyHud({
               </span>
             </label>
           </HudChrome>
-          {cachedWhy ? (
-            <HudChrome
-              className="max-w-[22rem] px-3 py-2 text-[11px] leading-snug text-amber-100/90"
-              interactive={false}
-            >
-              <p>{cachedWhy}</p>
-            </HudChrome>
-          ) : null}
           {workerError ? (
             <div
               className="pointer-events-auto rounded-lg bg-destructive/20 px-3 py-2 text-destructive text-xs ring-1 ring-destructive/30"
@@ -206,18 +181,18 @@ export function SkyHud({
               className="pointer-events-auto rounded-lg bg-amber-500/15 px-3 py-2 text-xs text-amber-100 ring-1 ring-amber-500/25"
               role="status"
             >
-              {enrichmentHaltLabel(enrichmentHalt)}
+              {enrichmentHaltLabel(enrichmentHalt, hasCachedEvidence)}
             </div>
           ) : null}
         </div>
 
         <HudChrome className="flex flex-col items-end gap-1 px-3 py-2" interactive={false}>
           <p className="font-mono text-lg leading-none tabular-nums">
-            {headline.topCount}
-            <span className="text-muted-foreground"> / {headline.total}</span>
+            {coverage.verifiedCount}
+            <span className="text-muted-foreground"> / {coverage.total}</span>
           </p>
           <p className="max-w-[16rem] text-right text-[10px] tracking-wide text-muted-foreground uppercase">
-            {headline.parent ? `${headline.parent} / visible` : "verified parent / visible"}
+            Cala verified / tracked
           </p>
         </HudChrome>
       </div>

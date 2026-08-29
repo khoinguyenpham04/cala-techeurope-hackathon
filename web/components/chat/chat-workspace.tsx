@@ -2,8 +2,6 @@
 
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import { ChatComposer } from "@/components/chat/composer";
-import { EffortChip } from "@/components/chat/effort-picker";
-import { ModelChip } from "@/components/chat/model-picker";
 import { Transcript } from "@/components/chat/transcript";
 import { SkyStoryCanvas } from "@/components/sky/sky-story-canvas-lazy";
 import { useSkySelection } from "@/components/sky/sky-context";
@@ -182,7 +180,7 @@ export function ChatWorkspace({
           />
         )}
         <h1 className="min-w-0 flex-1 truncate font-semibold text-sm">
-          {session?.title ?? (satellite ? "Satellite" : "New chat")}
+          {session?.title ?? (satellite ? "Evidence brief" : "Investigation")}
         </h1>
         {session?.noradId && (
           <Badge variant="outline" className="font-mono text-[10px]">
@@ -210,7 +208,7 @@ export function ChatWorkspace({
             )}
           />
           <span className="text-muted-foreground">
-            {working ? "Thinking" : chatStatus === "error" ? "Error" : "Ready"}
+            {working ? "Verifying" : chatStatus === "error" ? "Unavailable" : "Grounded"}
           </span>
         </span>
       </header>
@@ -259,19 +257,9 @@ export function ChatWorkspace({
           textareaProps={{
             disabled: !agent.historyReady,
             placeholder: satellite
-              ? "Ask a lesson about this satellite..."
-              : "Message the assistant...",
+              ? "Ask what Cala can verify about this object..."
+              : "Ask a sourced question...",
           }}
-          tools={
-            session?.model || session?.thinking ? (
-              <>
-                {session.model ? <ModelChip modelId={session.model} /> : null}
-                {session.thinking ? (
-                  <EffortChip thinking={session.thinking} />
-                ) : null}
-              </>
-            ) : undefined
-          }
         />
       </div>
     </div>

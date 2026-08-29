@@ -6,6 +6,7 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 export function AppShell({ children }: { children: ReactNode }) {
   return (
     <SidebarProvider
+      defaultOpen={false}
       // h-svh pins the shell to the viewport so the transcript scrolls
       // internally instead of growing the page.
       className="h-svh"

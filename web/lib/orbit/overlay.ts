@@ -73,7 +73,7 @@ function looksLikeCssColor(value: string): boolean {
 }
 
 function ownerColorFor(row: OverlayDossier): string | null {
-  if (row.evidenceState === "unknown" && !row.seeded) return null;
+  if (row.evidenceState === "unknown") return null;
   const explicit = row.ownerColor?.trim();
   if (explicit) return explicit;
   const key = row.colorKey?.trim();
@@ -108,34 +108,29 @@ export function overlayFromDossiers(dossiers: OverlayDossier[]): SatelliteOverla
 }
 
 /**
- * Headline counter: top verified ultimate-parent count / all visible payloads.
- * Unknowns stay in the denominator. Until Cala attaches overlays this is 0 / N.
+ * Coverage counter: objects with at least one cited Cala claim / all tracked
+ * payloads. Unknowns stay in the denominator.
  */
-export function headlineCounter(
+export function evidenceCoverage(
   visible: VisibleSatellite[],
   overlay?: SatelliteOverlayMap,
-): { topCount: number; total: number; parent: string | null } {
+): { verifiedCount: number; total: number } {
   const total = visible.length;
   if (!overlay || total === 0) {
-    return { topCount: 0, total, parent: null };
+    return { verifiedCount: 0, total };
   }
 
-  const counts = new Map<string, number>();
+  let verifiedCount = 0;
   for (const sat of visible) {
-    const parent = overlayFor(overlay, sat.noradId)?.ultimateParent?.trim();
-    if (!parent) continue;
-    counts.set(parent, (counts.get(parent) ?? 0) + 1);
-  }
-
-  let topCount = 0;
-  let parent: string | null = null;
-  for (const [name, count] of counts) {
-    if (count > topCount) {
-      topCount = count;
-      parent = name;
+    const entry = overlayFor(overlay, sat.noradId);
+    if (
+      entry?.evidenceState !== "unknown" &&
+      entry?.sources?.some((source) => source.url.trim())
+    ) {
+      verifiedCount += 1;
     }
   }
-  return { topCount, total, parent };
+  return { verifiedCount, total };
 }
 
 export function ownerLegend(
@@ -148,7 +143,7 @@ export function ownerLegend(
   for (const sat of visible) {
     const entry = overlayFor(overlay, sat.noradId);
     const color = entry?.ownerColor?.trim();
-    const label = entry?.ultimateParent?.trim() || entry?.operator?.trim();
+    const label = entry?.operator?.trim();
     if (!color || !label) continue;
     const current = counts.get(label);
     if (current) current.count += 1;

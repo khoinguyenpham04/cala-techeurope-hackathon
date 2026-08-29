@@ -5,13 +5,10 @@ Three-pane console: live CelesTrak payloads over a European city, progressive Ca
 ## Architecture
 
 ```
-CelesTrak OMM JSON
+CelesTrak OMM JSON (shipped `barcelona-omm.json`)
         │
         ▼
-Next /api/orbits  (2h cache, last-good on failure)
-        │
-        ▼
-Browser SGP4 worker (1 Hz, elevation > 0°)
+Browser SGP4 worker (1 Hz, Barcelona, elevation > 0°)
         │
         ▼
 COBE globe (lat/lon markers) ──► selected NORAD
@@ -77,12 +74,9 @@ Two-source join, never mixed:
 
 Anything without Cala evidence is `unknown`. The model must not infer ownership from the catalog name (no Starlink→SpaceX shortcuts). Satellite chat has no Tavily/`web_search` tool. Empty Cala evidence yields exactly: `No verified Cala data found`.
 
-## CelesTrak cache policy
+## Catalog (local)
 
-- Successful `GROUP=active&FORMAT=JSON` downloads are reused for **two hours**.
-- Non-200 responses: stop retrying for two hours; serve the last good snapshot if one exists (`source: "stale"`).
-- Transient network/timeout: short backoff (60s), then last good snapshot if available.
-- Catalog is fetched server-side from Next with a Sky Console user-agent. The browser never hits CelesTrak.
+Hackathon demo ships a CelesTrak `GROUP=stations` snapshot (`web/lib/orbit/seed/barcelona-omm.json`, ~22 objects, epoch 2026-08-29). No runtime CelesTrak fetch and no 2h cache. SGP4 still runs at 1 Hz over **Barcelona**; HUD **Above city** is the default.
 
 ## Cala failure discipline
 
@@ -101,15 +95,14 @@ See the root [README](../README.md). Defaults: web `http://localhost:3000`, agen
 
 ## Attribution
 
-- **CelesTrak** — GP (OMM) catalog, [celestrak.org](https://celestrak.org/). Sky Console caches one snapshot and backs off on non-200 to respect their usage policy.
+- **CelesTrak** — GP (OMM) `GROUP=stations` snapshot committed as `barcelona-omm.json`. Not fetched at runtime.
 - **Cala** — verified entity graph, [cala.ai](https://cala.ai/). Ownership, parent, country, and purpose in the inspector and chat are Cala-sourced when present.
 
 ## Known limitations
 
-- Observer set is a static list of European cities (default Barcelona).
+- Observer is Barcelona only.
 - Cala typically has constellation/operator/company entities, not a row per NORAD ID; many payloads share one dossier template.
 - Enrichment is progressive and budgeted; a halt leaves remaining dots grey until the page is reloaded.
-- CelesTrak may return **403** from some networks or after policy blocks; without a prior snapshot the globe stays empty.
 - Without `CALA_API_KEY`, enrich returns `unconfigured`; chat cannot cite ownership.
 - Display altitude is compressed; inspector altitude is the real value.
 - The globe is [COBE](https://cobe.vercel.app): lat/lon markers (far side fades), not true 3D orbits. Marker count is capped so the canvas stays light; the HUD still counts every visible payload.

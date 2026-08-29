@@ -3,8 +3,6 @@
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion";
 import { ChatComposer } from "@/components/chat/composer";
-import { EffortPicker } from "@/components/chat/effort-picker";
-import { ModelPicker } from "@/components/chat/model-picker";
 import { SkyStoryCanvas } from "@/components/sky/sky-story-canvas-lazy";
 import { useSkySelection } from "@/components/sky/sky-context";
 import { Badge } from "@/components/ui/badge";
@@ -23,25 +21,15 @@ import {
 } from "@/lib/sessions";
 import { cn } from "@/lib/utils";
 import { createFlueClient } from "@flue/sdk";
-import { OrbitIcon, SparklesIcon } from "lucide-react";
+import { OrbitIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 
-const SUGGESTIONS = [
-  "Explain how React Server Components work",
-  "Draft a friendly out-of-office email",
-  "Plan a weekend itinerary for Lisbon",
-  "Compare SQLite and Postgres for a side project",
-  "Write a regex that matches ISO 8601 dates",
-];
-
 const SATELLITE_SUGGESTIONS = [
-  "Who operates this satellite?",
-  "What is the ultimate parent company?",
-  "Which country is it associated with?",
-  "What is it used for?",
-  "Has the operator raised funding recently?",
+  "Who operates this object, and what can you verify?",
+  "Which country is the operator associated with?",
+  "What is this satellite family used for?",
 ];
 
 export function NewChat({
@@ -69,19 +57,20 @@ export function NewChat({
           city: sky.city.name,
         }
       : undefined);
-  const [model, setModel] = useState(DEFAULT_MODEL);
-  const [thinking, setThinking] = useState(DEFAULT_THINKING);
   const [sending, setSending] = useState(false);
   const satelliteMode = Boolean(satellite?.noradId);
   const waitingForSelection = pane && Boolean(sky) && !satelliteMode;
-  const suggestions = satelliteMode ? SATELLITE_SUGGESTIONS : pane ? [] : SUGGESTIONS;
+  const suggestions = satelliteMode ? SATELLITE_SUGGESTIONS : [];
 
   async function startChat(message: PromptInputMessage) {
     const body = message.text?.trim() ?? "";
     const images = toDeliveredImages(message.files);
     if ((!body && images.length === 0) || sending) return;
+    if (waitingForSelection) return;
     if (satelliteMode && !satellite?.noradId) return;
     setSending(true);
+    const model = DEFAULT_MODEL;
+    const thinking = DEFAULT_THINKING;
     const kind: ChatKind = satelliteMode ? "satellite" : "assistant";
     const session = {
       id: newSessionId(kind),
@@ -160,11 +149,7 @@ export function NewChat({
         )}
       >
         <div className="flex size-12 items-center justify-center rounded-xl border bg-muted">
-          {satelliteMode ? (
-            <OrbitIcon className="size-6 text-primary" />
-          ) : (
-            <SparklesIcon className="size-6 text-primary" />
-          )}
+          <OrbitIcon className="size-6 text-primary" />
         </div>
         <h1 className="font-semibold text-2xl tracking-tight">
           {waitingForSelection
@@ -173,7 +158,7 @@ export function NewChat({
             ? satellite?.name
               ? `Ask about ${satellite.name}`
               : `Ask about NORAD ${satellite?.noradId}`
-            : "How can I help you today?"}
+            : "Who owns the sky?"}
         </h1>
         {satelliteMode && (
           <div className="flex flex-wrap items-center gap-1.5">
@@ -190,10 +175,10 @@ export function NewChat({
         )}
         <p className="max-w-md text-muted-foreground text-sm">
           {waitingForSelection
-            ? "Click a payload on the globe, or send a message to start a chat."
+            ? "Choose an object on the globe to open a sourced accountability brief."
             : satelliteMode
               ? "Answers come only from cited Cala evidence. Unknown stays unknown."
-              : "Ask anything. Conversations are saved in the sidebar and replay when you come back."}
+              : "Explore the organizations behind the infrastructure orbiting Earth."}
         </p>
       </div>
       )}
@@ -208,18 +193,13 @@ export function NewChat({
           status={sending ? "submitted" : "ready"}
           textareaProps={{
             autoFocus: !pane,
+            disabled: waitingForSelection,
             placeholder: satelliteMode
-              ? "Ask a lesson about this satellite..."
+              ? "Ask what Cala can verify about this object..."
               : waitingForSelection
-                ? "Message the assistant, or select a satellite..."
-                : "Ask anything...",
+                ? "Select an object to ask a sourced question..."
+                : "Select an object to begin...",
           }}
-          tools={
-            <>
-              <ModelPicker onChange={setModel} value={model} />
-              <EffortPicker onChange={setThinking} value={thinking} />
-            </>
-          }
         />
         {suggestions.length > 0 && (
           <Suggestions className={pane ? undefined : "mx-auto"}>

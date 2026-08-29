@@ -33,8 +33,8 @@ export function SkyConsole({ children }: { children: ReactNode }) {
     }),
     [city.heightKm, city.latitudeDeg, city.longitudeDeg],
   );
-  // Cinematic default: full catalog shell. HUD "Above city" is opt-in.
-  const [horizonOnly, setHorizonOnly] = useState(false);
+  // Barcelona demo: only payloads currently above the city.
+  const [horizonOnly, setHorizonOnly] = useState(true);
   const { visible, error: workerError } = useOrbitWorker(
     catalog?.records,
     observer,
@@ -44,6 +44,15 @@ export function SkyConsole({ children }: { children: ReactNode }) {
   const setCity = useCallback((id: string) => {
     setCityId(id);
   }, []);
+  const demoNoradId = useMemo(() => {
+    const record = catalog?.records.find((row) => /^SENTINEL-/i.test(row.OBJECT_NAME));
+    return record ? noradKey(record.NORAD_CAT_ID) : null;
+  }, [catalog?.records]);
+  const selectDemo = useCallback(() => {
+    if (!demoNoradId) return;
+    setHorizonOnly(false);
+    setNoradId(demoNoradId);
+  }, [demoNoradId]);
 
   const selected = visible.find((sat) => sat.noradId === noradId) ?? null;
   const selectedOmm = useMemo(() => {
@@ -53,16 +62,12 @@ export function SkyConsole({ children }: { children: ReactNode }) {
 
   const globe = (
     <GlobeWorkspace
-      catalogError={catalog?.error}
       city={city}
       enrichmentHalt={enrichmentHalt}
       loading={loading}
       horizonOnly={horizonOnly}
-      onCityChange={(id) => {
-        setCity(id);
-        setNoradId(null);
-      }}
       onHorizonOnlyChange={setHorizonOnly}
+      onDemoPick={selectDemo}
       onSelect={setNoradId}
       overlay={overlay}
       selected={selected}

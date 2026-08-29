@@ -19,11 +19,11 @@ export interface SlimOmm {
   MEAN_MOTION_DDOT: number;
 }
 
-export type CatalogSource = "live" | "cache" | "stale" | "seed";
+export type CatalogSource = "local" | "live" | "cache" | "stale" | "seed";
 
 /**
- * Seed bundle or 403-stale snapshot — not a live CelesTrak download.
- * `cache` is a successful live fetch still inside the 2h TTL; that is live.
+ * Seed bundle or 403-stale snapshot — not the shipped local stations file.
+ * `local` is the committed `barcelona-omm.json` (no runtime CelesTrak).
  */
 export function isFallbackCatalog(source: CatalogSource | undefined): boolean {
   return source === "seed" || source === "stale";

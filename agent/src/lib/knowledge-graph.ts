@@ -6,6 +6,7 @@
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { BUNDLED_CALA_RECORDS } from './bundled-evidence.ts';
 import { seedFromGroupKey, type MegaSeed } from './constellation-seeds.ts';
 import type {
 	CalaSource,
@@ -68,6 +69,17 @@ function defaultNode(key: string): GraphNode | undefined {
 }
 
 async function hydrateFromDisk() {
+	for (const [key, cala] of Object.entries(BUNDLED_CALA_RECORDS)) {
+		const seed = seedFromGroupKey(key);
+		nodes.set(key, {
+			key,
+			matchKind: cala.matchKind,
+			seed,
+			cala,
+			lookupAttempted: true,
+			lookupAttemptedAt: cala.fetchedAt,
+		});
+	}
 	try {
 		const raw = await readFile(GRAPH_PATH, 'utf8');
 		const parsed = JSON.parse(raw) as PersistedGraph;
@@ -81,7 +93,13 @@ async function hydrateFromDisk() {
 		for (const [key, node] of Object.entries(parsed.nodes)) {
 			if (!node || typeof node !== 'object') continue;
 			const seed = node.seed ?? seedFromGroupKey(key);
-			nodes.set(key, { ...node, key, seed, matchKind: node.matchKind ?? seed?.matchKind ?? 'operator' });
+			nodes.set(key, {
+				...node,
+				key,
+				seed,
+				cala: node.cala ? sanitizeCalaRecord(node.cala) : undefined,
+				matchKind: node.matchKind ?? seed?.matchKind ?? 'operator',
+			});
 		}
 	} catch {
 		// Missing or corrupt snapshot — start empty; seeds fill in on demand.
@@ -129,14 +147,15 @@ export function getGraphNode(key: string): GraphNode | undefined {
 }
 
 export function putGraphCala(key: string, cala: GraphCalaRecord) {
-	const existing = getGraphNode(key) ?? { key, matchKind: cala.matchKind };
+	const sanitized = sanitizeCalaRecord(cala);
+	const existing = getGraphNode(key) ?? { key, matchKind: sanitized.matchKind };
 	nodes.set(key, {
 		...existing,
 		key,
-		matchKind: cala.matchKind,
-		cala,
+		matchKind: sanitized.matchKind,
+		cala: sanitized,
 		lookupAttempted: true,
-		lookupAttemptedAt: cala.fetchedAt,
+		lookupAttemptedAt: sanitized.fetchedAt,
 	});
 	persist();
 }
@@ -190,20 +209,46 @@ export function clearRateLimit() {
 
 function sourced(field?: SourcedField): SourcedField | undefined {
 	if (!field?.value?.trim()) return undefined;
-	if (!field.sources.length) return undefined;
-	return field;
+	const sources = field.sources.filter((source) => source.url.trim());
+	if (!sources.length) return undefined;
+	return { value: field.value.trim(), sources };
+}
+
+function sanitizeCalaRecord(cala: GraphCalaRecord): GraphCalaRecord {
+	const operator = sourced(cala.operator);
+	const country = sourced(cala.country);
+	const purpose = sourced(cala.purpose);
+	const filled = [operator, country, purpose].filter(Boolean).length;
+	const sources = new Map<string, CalaSource>();
+	for (const field of [operator, country, purpose]) {
+		for (const source of field?.sources ?? []) {
+			sources.set(`${source.url}|${source.date ?? ''}`, source);
+		}
+	}
+	return {
+		...cala,
+		operator,
+		// Historical snapshots may have treated a shareholder/direct owner as
+		// an ultimate parent. Drop it until a strict parent edge is resolved.
+		ultimateParent: undefined,
+		country,
+		purpose,
+		sources: [...sources.values()],
+		evidenceState: filled === 0 ? 'unknown' : filled >= 3 ? 'verified' : 'partial',
+		colorKey: operator ? cala.colorKey : undefined,
+	};
 }
 
 export function dossierFromGraphNode(node: GraphNode, object: CatalogObject): SatelliteDossier {
-	const cala = node.cala;
+	const cala = node.cala ? sanitizeCalaRecord(node.cala) : undefined;
 	if (cala && cala.evidenceState !== 'unknown') {
 		return {
 			noradId: object.noradId,
 			evidenceState: cala.evidenceState,
-			operator: sourced(cala.operator) ?? cala.operator,
-			ultimateParent: sourced(cala.ultimateParent) ?? cala.ultimateParent,
-			country: sourced(cala.country) ?? cala.country,
-			purpose: sourced(cala.purpose) ?? cala.purpose,
+			operator: sourced(cala.operator),
+			ultimateParent: undefined,
+			country: sourced(cala.country),
+			purpose: sourced(cala.purpose),
 			sources: cala.sources,
 			colorKey: cala.colorKey,
 			matchKind: cala.matchKind,

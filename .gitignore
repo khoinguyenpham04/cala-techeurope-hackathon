@@ -1,5 +1,6 @@
 # Dependencies — never commit install trees (root, web/, agent/)
 node_modules/
+.pnpm-store/
 
 # Secrets — keep .env.example
 .env
@@ -14,6 +15,8 @@ web/.cache/
 
 # Local pnpm content-addressable store (never commit)
 .pnpm-store/
+web/pnpm-lock.yaml
+
 
 # Leftover Cesium static assets / GLBs — globe is COBE now
 web/public/cesium/

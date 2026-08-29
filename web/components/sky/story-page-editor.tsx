@@ -15,7 +15,7 @@ import { ListPlugin } from "@lexical/react/LexicalListPlugin";
 import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
 import { HeadingNode, QuoteNode } from "@lexical/rich-text";
 import { SKIP_DOM_SELECTION_TAG, type EditorThemeClasses } from "lexical";
-import { useLayoutEffect, useMemo } from "react";
+import { useEffect, useMemo } from "react";
 
 const theme: EditorThemeClasses = {
   paragraph: "mb-3 text-sm leading-relaxed text-foreground/90",
@@ -57,13 +57,20 @@ function PageSyncPlugin({ page }: { page: StoryPage }) {
   const [editor] = useLexicalComposerContext();
   const signature = useMemo(() => JSON.stringify(page), [page]);
 
-  useLayoutEffect(() => {
-    editor.update(
-      () => {
-        $setStoryPage(page);
-      },
-      { tag: SKIP_DOM_SELECTION_TAG },
-    );
+  useEffect(() => {
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      editor.update(
+        () => {
+          $setStoryPage(page);
+        },
+        { tag: SKIP_DOM_SELECTION_TAG },
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [editor, page, signature]);
 
   return null;

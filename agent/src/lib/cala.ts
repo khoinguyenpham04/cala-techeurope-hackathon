@@ -399,7 +399,10 @@ function slugColorKey(value: string): string {
 }
 
 function hasSourced(field?: SourcedField): boolean {
-	return Boolean(field?.value?.trim() && field.sources.length > 0);
+	return Boolean(
+		field?.value?.trim() &&
+			field.sources.some((source) => source.url.trim().length > 0),
+	);
 }
 
 function evidenceState(dossier: Pick<SatelliteDossier, 'operator' | 'ultimateParent' | 'country' | 'purpose'>): EvidenceState {
@@ -417,22 +420,25 @@ function finishDossier(
 		sources?: CalaSource[];
 	},
 ): SatelliteDossier {
+	const operator = hasSourced(partial.operator) ? partial.operator : undefined;
+	const ultimateParent = hasSourced(partial.ultimateParent)
+		? partial.ultimateParent
+		: undefined;
+	const country = hasSourced(partial.country) ? partial.country : undefined;
+	const purpose = hasSourced(partial.purpose) ? partial.purpose : undefined;
 	const sources = mergeSources(
 		partial.sources,
-		hasSourced(partial.operator) ? partial.operator?.sources : undefined,
-		hasSourced(partial.ultimateParent) ? partial.ultimateParent?.sources : undefined,
-		hasSourced(partial.country) ? partial.country?.sources : undefined,
-		hasSourced(partial.purpose) ? partial.purpose?.sources : undefined,
+		operator?.sources,
+		ultimateParent?.sources,
+		country?.sources,
+		purpose?.sources,
 	);
-	const state = evidenceState(partial);
-	const colorSeed = hasSourced(partial.ultimateParent)
-		? partial.ultimateParent?.value
-		: hasSourced(partial.operator)
-			? partial.operator?.value
-			: undefined;
-	const colorKey = state !== 'unknown' && colorSeed ? slugColorKey(colorSeed) : partial.colorKey;
+	const sourcedFields = { operator, ultimateParent, country, purpose };
+	const state = evidenceState(sourcedFields);
+	const colorKey = operator ? slugColorKey(operator.value) : undefined;
 	return {
 		...partial,
+		...sourcedFields,
 		evidenceState: state,
 		sources,
 		colorKey,
@@ -653,10 +659,10 @@ function dossierFromEntity(entity: RetrievedEntity, matchKind: MatchKind, object
 		firstRelated(outgoing, (edge) => edgeLooksLike(edge, /INDUSTRY|PURPOSE|SECTOR|OPERATES_IN/));
 
 	const parent =
-		firstRelated(incoming, (edge) =>
-			edgeLooksLike(edge, /ULTIMATE_PARENT|DIRECT_PARENT|DIRECT_OWNER|IS_DIRECT_OWNER|BENEFICIARY_OWNER|SUBSIDIARY_OF/),
-		) ??
-		firstRelated(outgoing, (edge) => edgeLooksLike(edge, /IS_SUBSIDIARY_OF|OWNED_BY|IS_ULTIMATE_PARENT/));
+		firstRelated(incoming, (edge) => edgeLooksLike(edge, /ULTIMATE_PARENT/)) ??
+		firstRelated(outgoing, (edge) =>
+			edgeLooksLike(edge, /IS_SUBSIDIARY_OF|HAS_ULTIMATE_PARENT/),
+		);
 
 	const operatedBy =
 		firstRelated(outgoing, (edge) => edgeLooksLike(edge, /OPERAT|MANUFACTUR|OWNED_BY|IS_OWNER|IS_DIRECT_OWNER/)) ??
@@ -669,16 +675,10 @@ function dossierFromEntity(entity: RetrievedEntity, matchKind: MatchKind, object
 		operator = operatedBy;
 	}
 
-	let ultimateParent = parent;
-	if (!ultimateParent && operator && matchKind === 'operator') {
-		const hasSubsidiaries = Object.keys(outgoing).some((edge) => edgeLooksLike(edge, /ULTIMATE_PARENT_OF|DIRECT_PARENT_OF/));
-		if (hasSubsidiaries || !parent) ultimateParent = operator;
-	}
-
 	return finishDossier({
 		noradId: object.noradId,
 		operator,
-		ultimateParent,
+		ultimateParent: parent,
 		country,
 		purpose,
 		matchKind,
@@ -760,10 +760,6 @@ function persistResolved(object: CatalogObject, dossier: SatelliteDossier) {
 		return;
 	}
 	markGraphLookupAttempted(key, dossier.matchKind ?? 'operator');
-}
-
-function unknownDossier(object: CatalogObject): SatelliteDossier {
-	return dossierForObject(object);
 }
 
 /**

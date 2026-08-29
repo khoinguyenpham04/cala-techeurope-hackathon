@@ -5,7 +5,6 @@ import * as React from "react"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
 
-import { NavSecondary } from "@/components/nav-secondary"
 import { ThemeToggle } from "@/components/theme-toggle"
 import {
   DropdownMenu,
@@ -30,21 +29,12 @@ import {
 } from "@/components/ui/sidebar"
 import { removeSession, useChatSessions } from "@/lib/sessions"
 import {
-  BookOpenIcon,
   ChatCircleIcon,
   DotsThreeOutlineIcon,
   PlusCircleIcon,
   SparkleIcon,
   TrashIcon,
 } from "@phosphor-icons/react"
-
-const navSecondary = [
-  {
-    title: "Flue docs",
-    url: "https://flueframework.com",
-    icon: <BookOpenIcon />,
-  },
-]
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const sessions = useChatSessions()
@@ -63,7 +53,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               render={<Link href="/" />}
             >
               <SparkleIcon className="size-5! text-primary" />
-              <span className="text-base font-semibold">Flue Chat</span>
+              <span className="text-base font-semibold">Who Owns the Sky?</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -78,18 +68,18 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   render={<Link href="/" />}
                 >
                   <PlusCircleIcon />
-                  <span>New chat</span>
+                  <span>Explore the sky</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
         <SidebarGroup className="group-data-[collapsible=icon]:hidden">
-          <SidebarGroupLabel>Recent chats</SidebarGroupLabel>
+          <SidebarGroupLabel>Saved investigations</SidebarGroupLabel>
           <SidebarMenu>
             {sessions.length === 0 && (
               <p className="px-2 py-1.5 text-muted-foreground text-xs">
-                No chats yet. Send a message to start one.
+                Select an object and ask a sourced question.
               </p>
             )}
             {sessions.map((session) => (
@@ -141,7 +131,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             ))}
           </SidebarMenu>
         </SidebarGroup>
-        <NavSecondary items={navSecondary} className="mt-auto" />
       </SidebarContent>
       <SidebarFooter>
         <SidebarMenu>

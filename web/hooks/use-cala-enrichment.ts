@@ -101,5 +101,39 @@ export function useCalaEnrichment(
     };
   }, [visibleKey, selected, selectedNoradId]);
 
+  // A user selection may still be served from the local Cala graph after live
+  // enrichment has halted. This is what keeps the sourced demo path available
+  // during a 429 without retrying the full background batch.
+  useEffect(() => {
+    if (!selectedNoradId || done.current.has(selectedNoradId)) return;
+    if (inflight.current.has(selectedNoradId)) return;
+    const satellite = visibleRef.current.find(
+      (entry) => entry.noradId === selectedNoradId,
+    );
+    if (!satellite) return;
+
+    let cancelled = false;
+    inflight.current.add(selectedNoradId);
+    void enrichSatellites({
+      selectedNoradId,
+      satellites: [{ noradId: satellite.noradId, name: satellite.name }],
+    })
+      .then((result) => {
+        if (cancelled || result.dossiers.length === 0) return;
+        const mapped = overlayFromDossiers(result.dossiers);
+        for (const dossier of result.dossiers) {
+          done.current.add(noradKey(dossier.noradId));
+        }
+        setOverlay((previous) => ({ ...previous, ...mapped }));
+      })
+      .finally(() => {
+        inflight.current.delete(selectedNoradId);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedNoradId, visibleKey]);
+
   return { overlay, halt };
 }

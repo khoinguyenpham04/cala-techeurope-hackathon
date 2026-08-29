@@ -1,6 +1,6 @@
 # Sky Console
 
-TechEurope × Cala hackathon MVP: a three-pane satellite console. A live globe shows CelesTrak active payloads above a selected European city; Cala progressively paints verified owners; the right pane answers only from cited Cala evidence.
+TechEurope × Cala hackathon MVP: a three-pane satellite console. A local stations catalog is propagated over **Barcelona**; Cala progressively paints verified owners; the right pane answers only from cited Cala evidence.
 
 Default observer: **Barcelona**. Grey dots mean “not yet verified,” not “not there.” The headline counter is `top verified parent / all visible`.
 
@@ -54,7 +54,7 @@ Cursor MCP inspection (interactive only, not the runtime path): in `~/.cursor/mc
 
 | API / tool | Used for |
 | --- | --- |
-| [CelesTrak](https://celestrak.org/) GP OMM JSON (`GROUP=active`) | Catalog identity and SGP4 elements. Cached 2h; last-good snapshot on failure |
+| [CelesTrak](https://celestrak.org/) GP OMM JSON (`GROUP=stations`, shipped) | Identity and SGP4 elements. Local file only — not fetched at runtime |
 | [Cala](https://docs.cala.ai/) REST (`knowledge_query`, entity search / introspect / retrieve, `knowledge_search`) | Operator, ultimate parent, country, purpose, citations |
 | [Flue](https://flueframework.com) | Durable agents: `assistant` and `satellite` |
 | [satellite.js](https://github.com/shashwatak/satellite-js) `json2satrec` | Off-main-thread propagation at 1 Hz |

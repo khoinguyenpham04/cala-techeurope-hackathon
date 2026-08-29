@@ -18,8 +18,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Flue Chat",
-  description: "A general-purpose AI chat, powered by Flue",
+  title: "Who Owns the Sky?",
+  description:
+    "A live orbital accountability map powered by CelesTrak, Cala, satellite.js, and Flue.",
 };
 
 export default function RootLayout({
@@ -34,7 +35,7 @@ export default function RootLayout({
       // next-themes sets the theme class on <html> before paint.
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col">
+      <body className="min-h-full flex flex-col" suppressHydrationWarning>
         <ThemeProvider
           attribute="class"
           defaultTheme="system"

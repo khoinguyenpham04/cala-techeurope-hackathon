@@ -236,13 +236,6 @@ export function GlobeScene({
       if (!dragging) {
         phi = lerpAngle(phi, target.phi, reducedMotion ? 1 : 0.08);
         theta = lerpAngle(theta, target.theta, reducedMotion ? 1 : 0.08);
-        const focused =
-          Math.abs(lerpAngle(0, target.phi - phi, 1)) < 0.004 &&
-          Math.abs(target.theta - theta) < 0.004;
-        if (focused && !reducedMotion) {
-          phi += 0.0022;
-          focusRef.current = { phi, theta };
-        }
       }
 
       fillMarkers();
