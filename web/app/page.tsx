@@ -1,12 +1,13 @@
-import { SiteHeader } from "@/components/site-header";
 import { AppShell } from "@/components/chat/app-shell";
 import { NewChat } from "@/components/chat/new-chat";
+import { SkyConsole } from "@/components/sky/sky-console";
 
 export default function HomePage() {
   return (
     <AppShell>
-      <SiteHeader title="New chat" />
-      <NewChat />
+      <SkyConsole>
+        <NewChat density="pane" />
+      </SkyConsole>
     </AppShell>
   );
 }

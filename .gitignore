@@ -1,1 +1,16 @@
+# Dependencies — never commit install trees (root, web/, agent/)
+node_modules/
+
+# Secrets — keep .env.example
+.env
+.env.*
+!.env.example
+
+# OS
 .DS_Store
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*

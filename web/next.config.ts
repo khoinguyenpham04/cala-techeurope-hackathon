@@ -6,12 +6,16 @@ const FLUE_SERVER_URL = process.env.FLUE_SERVER_URL ?? "http://localhost:5173";
 
 const nextConfig: NextConfig = {
   rewrites() {
-    // Same-origin proxy for the browser: /api/agents/* → Flue's /agents/*.
-    // Keeps the SSE stream on one origin so no CORS setup is needed.
+    // Same-origin proxies so the browser never talks to Flue or Cala directly.
+    // /api/agents/* → Flue agents (SSE). /api/satellites/* → Cala enrichment.
     return [
       {
         source: "/api/agents/:path*",
         destination: `${FLUE_SERVER_URL}/agents/:path*`,
+      },
+      {
+        source: "/api/satellites/:path*",
+        destination: `${FLUE_SERVER_URL}/api/satellites/:path*`,
       },
     ];
   },

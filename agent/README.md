@@ -10,6 +10,8 @@ npm install
 
 Then add a model provider API key to `.env` (any [provider Pi supports](https://pi.dev/docs/latest/providers#api-keys)).
 
+For satellite enrichment and grounded chat, also set `CALA_API_KEY` in `.env` (see `.env.example`). The key is read only by this process. For Cursor MCP inspection, put `"X-API-KEY": "${env:CALA_API_KEY}"` in `~/.cursor/mcp.json` — never a literal secret, and never in this repo.
+
 ## Talk to your agent
 
 ```sh

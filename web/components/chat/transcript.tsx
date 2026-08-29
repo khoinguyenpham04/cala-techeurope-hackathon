@@ -33,14 +33,23 @@ import {
   ToolInput,
   ToolOutput,
 } from "@/components/ai-elements/tool";
+import { CalaEvidence } from "@/components/chat/cala-evidence";
 import { searchSources, WEB_SEARCH_TOOL } from "@/lib/search";
+import {
+  CALA_KNOWLEDGE_SEARCH,
+  LOOKUP_SATELLITE_DOSSIER,
+  calaSources,
+  dossierFromMessage,
+  type CalaCitation,
+} from "@/lib/cala";
+import { cn } from "@/lib/utils";
 import type {
   AgentStatus,
   FlueConversationMessage,
   FlueConversationPart,
 } from "@flue/react";
 import type { UIMessage } from "ai";
-import { CheckIcon, CopyIcon, MessageSquareIcon } from "lucide-react";
+import { CheckIcon, CopyIcon, MessageSquareIcon, BookIcon } from "lucide-react";
 import { Fragment, useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -66,13 +75,33 @@ function ToolPart({
 }: {
   part: Extract<FlueConversationPart, { type: "dynamic-tool" }>;
 }) {
-  // A finished search is shown as the Sources block above the answer, so the
-  // raw call is only worth rendering while it runs or when it fails.
+  // Finished search/Cala tools are shown as Sources / evidence above the
+  // answer, so the raw call is only worth rendering while it runs or fails.
   if (part.toolName === WEB_SEARCH_TOOL && part.state !== "output-error") {
     if (part.state === "input-available") {
       return (
         <div className="py-1 text-sm">
           <Shimmer duration={1.5}>Searching the web...</Shimmer>
+        </div>
+      );
+    }
+    return null;
+  }
+  if (part.toolName === LOOKUP_SATELLITE_DOSSIER && part.state !== "output-error") {
+    if (part.state === "input-available") {
+      return (
+        <div className="py-1 text-sm">
+          <Shimmer duration={1.5}>Checking Cala...</Shimmer>
+        </div>
+      );
+    }
+    return null;
+  }
+  if (part.toolName === CALA_KNOWLEDGE_SEARCH && part.state !== "output-error") {
+    if (part.state === "input-available") {
+      return (
+        <div className="py-1 text-sm">
+          <Shimmer duration={1.5}>Searching Cala...</Shimmer>
         </div>
       );
     }
@@ -92,8 +121,26 @@ function ToolPart({
   );
 }
 
+function mergeCitations(message: FlueConversationMessage): CalaCitation[] {
+  const byUrl = new Map<string, CalaCitation>();
+  for (const result of searchSources(message)) {
+    if (!byUrl.has(result.url)) {
+      byUrl.set(result.url, {
+        title: result.title,
+        url: result.url,
+        snippet: result.snippet,
+      });
+    }
+  }
+  for (const citation of calaSources(message)) {
+    if (!byUrl.has(citation.url)) byUrl.set(citation.url, citation);
+  }
+  return [...byUrl.values()];
+}
+
 function AssistantParts({ message }: { message: FlueConversationMessage }) {
-  const sources = searchSources(message);
+  const sources = mergeCitations(message);
+  const dossier = dossierFromMessage(message);
   return (
     <>
       {sources.length > 0 && (
@@ -101,11 +148,22 @@ function AssistantParts({ message }: { message: FlueConversationMessage }) {
           <SourcesTrigger count={sources.length} />
           <SourcesContent>
             {sources.map((source) => (
-              <Source href={source.url} key={source.url} title={source.title} />
+              <Source href={source.url} key={source.url} title={source.title}>
+                <BookIcon className="size-4 shrink-0" />
+                <span className="flex min-w-0 flex-col">
+                  <span className="block font-medium">{source.title}</span>
+                  {(source.publisher || source.date) && (
+                    <span className="text-muted-foreground">
+                      {[source.publisher, source.date].filter(Boolean).join(" · ")}
+                    </span>
+                  )}
+                </span>
+              </Source>
             ))}
           </SourcesContent>
         </Sources>
       )}
+      {dossier ? <CalaEvidence dossier={dossier} /> : null}
       {message.parts.map((part, index) => {
         const key = `${message.id}-${index}`;
         switch (part.type) {
@@ -202,9 +260,15 @@ function isStreaming(message: FlueConversationMessage): boolean {
 export function Transcript({
   messages,
   status,
+  density = "page",
+  emptyTitle = "Start the conversation",
+  emptyDescription = "Send a message to begin.",
 }: {
   messages: FlueConversationMessage[];
   status: AgentStatus;
+  density?: "page" | "pane";
+  emptyTitle?: string;
+  emptyDescription?: string;
 }) {
   const visible = messages.filter(
     (message) => message.display === "visible" && message.parts.length > 0,
@@ -224,18 +288,23 @@ export function Transcript({
 
   return (
     <Conversation className="min-h-0 flex-1">
-      {visible.length > 0 && (
+      {visible.length > 0 && density === "page" && (
         <ConversationDownload
           aria-label="Download transcript"
           messages={downloadable}
         />
       )}
-      <ConversationContent className="mx-auto w-full max-w-3xl px-6 py-6">
+      <ConversationContent
+        className={cn(
+          "mx-auto w-full",
+          density === "pane" ? "max-w-none px-3 py-4" : "max-w-3xl px-6 py-6",
+        )}
+      >
         {visible.length === 0 && !working && (
           <ConversationEmptyState
-            description="Send a message to begin."
+            description={emptyDescription}
             icon={<MessageSquareIcon className="size-8" />}
-            title="Start the conversation"
+            title={emptyTitle}
           />
         )}
         {visible.map((message) => (

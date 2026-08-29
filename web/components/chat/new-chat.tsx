@@ -3,12 +3,26 @@
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
 import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion";
 import { ChatComposer } from "@/components/chat/composer";
+import { EffortPicker } from "@/components/chat/effort-picker";
 import { ModelPicker } from "@/components/chat/model-picker";
+import { Badge } from "@/components/ui/badge";
 import { toDeliveredImages } from "@/lib/attachments";
-import { DEFAULT_MODEL } from "@/lib/models";
-import { chatTitle, newSessionId, saveSession } from "@/lib/sessions";
+import { useSkySelection } from "@/components/sky/sky-context";
+import {
+  agentUrlForSession,
+  type SatelliteChatContext,
+} from "@/lib/cala";
+import { DEFAULT_MODEL, DEFAULT_THINKING } from "@/lib/models";
+import {
+  chatTitle,
+  newSessionId,
+  satelliteChatTitle,
+  saveSession,
+  type ChatKind,
+} from "@/lib/sessions";
+import { cn } from "@/lib/utils";
 import { createFlueClient } from "@flue/sdk";
-import { SparklesIcon } from "lucide-react";
+import { OrbitIcon, SparklesIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -21,28 +35,70 @@ const SUGGESTIONS = [
   "Write a regex that matches ISO 8601 dates",
 ];
 
-export function NewChat() {
-  const router = useRouter();
-  const [model, setModel] = useState(DEFAULT_MODEL);
-  const [sending, setSending] = useState(false);
+const SATELLITE_SUGGESTIONS = [
+  "Who operates this satellite?",
+  "What is the ultimate parent company?",
+  "Which country is it associated with?",
+  "What is it used for?",
+  "Has the operator raised funding recently?",
+];
 
-  // Creates the conversation before navigating: the creating send carries
-  // initialData:{model}, which is the only point Flue lets us choose one. The
-  // workspace then only ever observes an existing conversation.
+export function NewChat({
+  satellite: satelliteProp,
+  compact = false,
+  density,
+  onStarted,
+}: {
+  satellite?: SatelliteChatContext;
+  /** Right-pane density. Preferred by Sky Console. */
+  compact?: boolean;
+  density?: "page" | "pane";
+  /** If set, the starter stays in-pane instead of routing to `/chat/[id]`. */
+  onStarted?: (sessionId: string) => void;
+}) {
+  const router = useRouter();
+  const sky = useSkySelection();
+  const pane = compact || density === "pane";
+  const satellite =
+    satelliteProp ??
+    (sky?.satellite
+      ? {
+          noradId: sky.satellite.noradId,
+          name: sky.satellite.name,
+          city: sky.city.name,
+        }
+      : undefined);
+  const [model, setModel] = useState(DEFAULT_MODEL);
+  const [thinking, setThinking] = useState(DEFAULT_THINKING);
+  const [sending, setSending] = useState(false);
+  const satelliteMode = Boolean(satellite?.noradId);
+  const waitingForSelection = pane && Boolean(sky) && !satelliteMode;
+  const suggestions = satelliteMode ? SATELLITE_SUGGESTIONS : pane ? [] : SUGGESTIONS;
+
   async function startChat(message: PromptInputMessage) {
     const body = message.text?.trim() ?? "";
     const images = toDeliveredImages(message.files);
-    if ((!body && images.length === 0) || sending) return;
+    if ((!body && images.length === 0) || sending || waitingForSelection) return;
+    if (satelliteMode && !satellite?.noradId) return;
     setSending(true);
+    const kind: ChatKind = satelliteMode ? "satellite" : "assistant";
     const session = {
-      id: newSessionId(),
-      title: chatTitle(body || "Image"),
+      id: newSessionId(kind),
+      title: satelliteMode
+        ? satelliteChatTitle({ name: satellite?.name, noradId: satellite!.noradId })
+        : chatTitle(body || "Image"),
       model,
+      thinking,
       createdAt: Date.now(),
+      kind,
+      noradId: satellite?.noradId,
+      satelliteName: satellite?.name,
+      constellation: satellite?.constellation,
+      city: satellite?.city,
     };
     try {
       const client = createFlueClient({
-        url: `/api/agents/assistant/${session.id}`,
+        url: agentUrlForSession(session.id, kind),
       });
       await client.send({
         message: {
@@ -50,11 +106,25 @@ export function NewChat() {
           body: body || "See the attached image.",
           ...(images.length ? { attachments: images } : {}),
         },
-        initialData: { model },
+        initialData: satelliteMode
+          ? {
+              noradId: satellite!.noradId,
+              name: satellite?.name,
+              constellation: satellite?.constellation,
+              city: satellite?.city,
+              model,
+              thinking,
+            }
+          : { model, thinking },
       });
       saveSession(session);
-      router.push(`/chat/${session.id}`);
-      // Stay in `sending` until navigation unmounts this screen.
+      if (onStarted) onStarted(session.id);
+      else router.push(`/chat/${session.id}`);
+      if (!onStarted) {
+        // Stay in `sending` until navigation unmounts this screen.
+      } else {
+        setSending(false);
+      }
     } catch (cause) {
       setSending(false);
       toast.error((cause as Error).message || "Could not start the chat.");
@@ -63,40 +133,104 @@ export function NewChat() {
   }
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-6 px-6">
-      <div className="flex flex-col items-center gap-2 text-center">
-        <div className="flex size-12 items-center justify-center rounded-xl border bg-muted">
-          <SparklesIcon className="size-6 text-primary" />
-        </div>
-        <h1 className="font-semibold text-2xl tracking-tight">
-          How can I help you today?
+    <div
+      className={cn(
+        "flex flex-col",
+        pane
+          ? "min-h-0 flex-1 justify-end gap-4 px-3 py-4"
+          : "flex-1 items-center justify-center gap-6 px-6",
+      )}
+    >
+      <div
+        className={cn(
+          "flex flex-col gap-2",
+          pane ? "items-start text-left" : "items-center text-center",
+        )}
+      >
+        {!pane && (
+          <div className="flex size-12 items-center justify-center rounded-xl border bg-muted">
+            {satelliteMode ? (
+              <OrbitIcon className="size-6 text-primary" />
+            ) : (
+              <SparklesIcon className="size-6 text-primary" />
+            )}
+          </div>
+        )}
+        <h1
+          className={cn(
+            "font-semibold tracking-tight",
+            pane ? "text-base" : "text-2xl",
+          )}
+        >
+          {waitingForSelection
+            ? "Select a satellite"
+            : satelliteMode
+            ? satellite?.name
+              ? `Ask about ${satellite.name}`
+              : `Ask about NORAD ${satellite?.noradId}`
+            : "How can I help you today?"}
         </h1>
+        {satelliteMode && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Badge variant="outline" className="font-mono">
+              NORAD {satellite?.noradId}
+            </Badge>
+            {satellite?.constellation ? (
+              <Badge variant="secondary">{satellite.constellation}</Badge>
+            ) : null}
+            {satellite?.city ? (
+              <Badge variant="outline">{satellite.city}</Badge>
+            ) : null}
+          </div>
+        )}
         <p className="max-w-md text-muted-foreground text-sm">
-          Ask anything. Conversations are saved in the sidebar and replay when
-          you come back.
+          {waitingForSelection
+            ? "Click a payload on the globe. Chat answers only from cited Cala evidence."
+            : satelliteMode
+              ? "Answers come only from cited Cala evidence. Unknown stays unknown."
+              : "Ask anything. Conversations are saved in the sidebar and replay when you come back."}
         </p>
       </div>
-      <div className="flex w-full max-w-2xl flex-col gap-3">
+      <div
+        className={cn(
+          "flex w-full flex-col gap-3",
+          pane ? "max-w-none" : "max-w-2xl",
+        )}
+      >
+        {!waitingForSelection && (
         <ChatComposer
           onSubmit={startChat}
           status={sending ? "submitted" : "ready"}
-          textareaProps={{ autoFocus: true, placeholder: "Ask anything..." }}
-          tools={<ModelPicker onChange={setModel} value={model} />}
+          textareaProps={{
+            autoFocus: !pane,
+            placeholder: satelliteMode
+              ? "Ask who owns this satellite..."
+              : "Ask anything...",
+          }}
+          tools={
+            <>
+              <ModelPicker onChange={setModel} value={model} />
+              <EffortPicker onChange={setThinking} value={thinking} />
+            </>
+          }
         />
-        <Suggestions className="mx-auto">
-          {SUGGESTIONS.map((suggestion) => (
-            <Suggestion
-              disabled={sending}
-              key={suggestion}
-              onClick={(value) => {
-                void startChat({ text: value, files: [] }).catch(() => {
-                  // already surfaced as a toast
-                });
-              }}
-              suggestion={suggestion}
-            />
-          ))}
-        </Suggestions>
+        )}
+        {suggestions.length > 0 && (
+          <Suggestions className={pane ? undefined : "mx-auto"}>
+            {suggestions.map((suggestion) => (
+              <Suggestion
+                disabled={sending}
+                key={suggestion}
+                onClick={(value) => {
+                  void startChat({ text: value, files: [] }).catch(() => {
+                    // already surfaced as a toast
+                  });
+                }}
+                suggestion={suggestion}
+              />
+            ))}
+          </Suggestions>
+        )}
       </div>
     </div>
   );

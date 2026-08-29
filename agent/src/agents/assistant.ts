@@ -1,7 +1,12 @@
 'use agent';
 import { useInitialData, useModel, useTool } from '@flue/runtime';
 import * as v from 'valibot';
-import { DEFAULT_MODEL, MODEL_IDS } from '../lib/models.ts';
+import {
+	DEFAULT_MODEL,
+	DEFAULT_THINKING,
+	MODEL_IDS,
+	THINKING_LEVELS,
+} from '../lib/models.ts';
 import { webSearch } from '../tools/search.ts';
 
 // A general-purpose chat assistant. The web UI picks the model per
@@ -9,7 +14,9 @@ import { webSearch } from '../tools/search.ts';
 // against the registry; conversations created without it use DEFAULT_MODEL.
 export function Assistant() {
 	const init = useInitialData<v.InferOutput<typeof Assistant.initialData>>();
-	useModel(init?.model ?? DEFAULT_MODEL);
+	useModel(init?.model ?? DEFAULT_MODEL, {
+		thinkingLevel: init?.thinking ?? DEFAULT_THINKING,
+	});
 
 	const searchEnabled = Boolean(process.env.TAVILY_API_KEY);
 	if (searchEnabled) useTool(webSearch);
@@ -29,4 +36,9 @@ Assistant.agentName = 'assistant';
 // strictObject so a misnamed key fails the creating send instead of silently
 // pinning the conversation to the default model; nullish so JSON null (the
 // natural "no preference" serialization) is accepted like absence.
-Assistant.initialData = v.nullish(v.strictObject({ model: v.nullish(v.picklist(MODEL_IDS)) }));
+Assistant.initialData = v.nullish(
+	v.strictObject({
+		model: v.nullish(v.picklist(MODEL_IDS)),
+		thinking: v.nullish(v.picklist(THINKING_LEVELS)),
+	}),
+);

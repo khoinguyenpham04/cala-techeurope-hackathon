@@ -1,5 +1,6 @@
 import { AppShell } from "@/components/chat/app-shell";
 import { ChatWorkspace } from "@/components/chat/chat-workspace";
+import { SkyConsole } from "@/components/sky/sky-console";
 
 export default async function ChatPage({
   params,
@@ -9,7 +10,9 @@ export default async function ChatPage({
   const { id } = await params;
   return (
     <AppShell>
-      <ChatWorkspace sessionId={id} />
+      <SkyConsole>
+        <ChatWorkspace density="pane" sessionId={id} />
+      </SkyConsole>
     </AppShell>
   );
 }

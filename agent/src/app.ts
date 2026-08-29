@@ -1,6 +1,8 @@
 import { createAgentRouter } from '@flue/runtime/routing';
 import { Hono } from 'hono';
 import { Assistant } from './agents/assistant.ts';
+import { Satellite } from './agents/satellite.ts';
+import { satellites } from './routes/satellites.ts';
 
 const app = new Hono();
 
@@ -23,6 +25,11 @@ app.use('/agents/*', async (c, next) => {
 // The Next.js app in ../web proxies /api/agents/* here, so the browser client
 // stays same-origin and no CORS setup is needed.
 app.route('/agents/assistant', createAgentRouter(Assistant));
+app.route('/agents/satellite', createAgentRouter(Satellite));
+
+// Globe enrichment: Next rewrites /api/satellites/* here so the browser stays
+// same-origin and never sees CALA_API_KEY.
+app.route('/api/satellites', satellites);
 
 app.get('/api/health', (c) => c.json({ ok: true }));
 
