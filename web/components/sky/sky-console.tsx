@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/resizable";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cityById, defaultCity } from "@/lib/geo/cities";
+import { noradKey } from "@/lib/orbit/omm";
 import { useOrbitCatalog } from "@/hooks/use-orbit-catalog";
 import { useOrbitWorker } from "@/hooks/use-orbit-worker";
 import { useCalaEnrichment } from "@/hooks/use-cala-enrichment";
@@ -42,6 +43,10 @@ export function SkyConsole({ children }: { children: ReactNode }) {
   }, []);
 
   const selected = visible.find((sat) => sat.noradId === noradId) ?? null;
+  const selectedOmm = useMemo(() => {
+    if (!noradId || !catalog?.records) return null;
+    return catalog.records.find((row) => noradKey(row.NORAD_CAT_ID) === noradId) ?? null;
+  }, [catalog?.records, noradId]);
 
   const globe = (
     <GlobeWorkspace
@@ -57,6 +62,7 @@ export function SkyConsole({ children }: { children: ReactNode }) {
       overlay={overlay}
       selected={selected}
       selectedNoradId={noradId}
+      selectedOmm={selectedOmm}
       showSidebarTrigger={!isMobile}
       source={catalog?.source}
       stale={Boolean(catalog?.stale)}

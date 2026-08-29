@@ -42,6 +42,8 @@ export interface SatelliteDossier {
   entityName?: string;
   celestrakName?: string;
   constellationHint?: string;
+  /** Catalog seed paint — not Cala evidence. */
+  seeded?: boolean;
 }
 
 export interface CatalogObject {
@@ -53,6 +55,7 @@ export interface CatalogObject {
 export interface EnrichmentHalt {
   code: "timeout" | "rate_limited" | "unreachable" | "unconfigured" | "http";
   message: string;
+  retryAfterMs?: number;
 }
 
 export interface EnrichmentResponse {
@@ -143,6 +146,7 @@ export function readDossier(output: unknown): SatelliteDossier | undefined {
     entityName: asString(output.entityName),
     celestrakName: asString(output.celestrakName),
     constellationHint: asString(output.constellationHint),
+    seeded: output.seeded === true,
   };
 }
 

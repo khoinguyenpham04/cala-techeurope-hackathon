@@ -8,8 +8,24 @@
  * hint). Cala proves operator, ultimate parent, country, and purpose when a
  * property or relationship carries a source. Otherwise the field is omitted
  * and `evidenceState` stays `unknown` or `partial`. CelesTrak membership is
- * not Cala evidence.
+ * not Cala evidence. Numbered mega-constellation names are not Cala entities —
+ * resolve once per constellation key into the local knowledge graph.
  */
+
+import {
+	clearRateLimit,
+	dossierFromGraphNode,
+	ensureGraphHydrated,
+	getGraphNode,
+	getRateLimitState,
+	graphHasSourcedCala,
+	isGraphLookupFresh,
+	markGraphLookupAttempted,
+	putGraphCala,
+	recordRateLimit,
+	type GraphCalaRecord,
+} from './knowledge-graph.ts';
+import { parseRetryAfterMs } from './retry-after.ts';
 
 export const CALA_BASE_URL = 'https://api.cala.ai/v1';
 export const CALA_TIMEOUT_MS = 180_000;
@@ -47,6 +63,8 @@ export interface SatelliteDossier {
 	entityName?: string;
 	celestrakName?: string;
 	constellationHint?: string;
+	/** Catalog seed paint — not Cala evidence. */
+	seeded?: boolean;
 }
 
 export interface CatalogObject {
@@ -63,6 +81,7 @@ export interface EnrichmentRequest {
 export interface EnrichmentHalt {
 	code: 'timeout' | 'rate_limited' | 'unreachable' | 'unconfigured';
 	message: string;
+	retryAfterMs?: number;
 }
 
 export interface EnrichmentResponse {
@@ -84,6 +103,7 @@ export class CalaError extends Error {
 		readonly code: CalaErrorCode,
 		message: string,
 		readonly status?: number,
+		readonly retryAfterMs?: number,
 	) {
 		super(message);
 		this.name = 'CalaError';
@@ -149,23 +169,6 @@ interface RelatedEntity {
 	properties?: Record<string, unknown>;
 }
 
-const CACHE_TTL_MS = 60 * 60 * 1000;
-const dossierCache = new Map<string, { dossier: SatelliteDossier; expiresAt: number }>();
-
-export function cacheGet(noradId: string): SatelliteDossier | undefined {
-	const hit = dossierCache.get(noradId);
-	if (!hit) return undefined;
-	if (hit.expiresAt < Date.now()) {
-		dossierCache.delete(noradId);
-		return undefined;
-	}
-	return hit.dossier;
-}
-
-export function cacheSet(dossier: SatelliteDossier) {
-	dossierCache.set(dossier.noradId, { dossier, expiresAt: Date.now() + CACHE_TTL_MS });
-}
-
 function apiKey(): string {
 	const key = process.env.CALA_API_KEY?.trim();
 	if (!key) {
@@ -227,7 +230,13 @@ async function calaFetch(path: string, init: RequestInit): Promise<Response> {
 	}
 
 	if (response.status === 429) {
-		throw new CalaError('rate_limited', 'Cala rate limit exceeded (HTTP 429). Halted; not retrying.', 429);
+		const wait = recordRateLimit(parseRetryAfterMs(response.headers.get('retry-after')));
+		throw new CalaError(
+			'rate_limited',
+			'Cala rate limit exceeded (HTTP 429). Halted; not retrying.',
+			429,
+			wait,
+		);
 	}
 	return response;
 }
@@ -350,7 +359,7 @@ function propertyValue(properties: Record<string, unknown>, key: string): Source
 
 function relatedField(rel: RelatedEntity | undefined): SourcedField | undefined {
 	if (!rel?.name?.trim()) return undefined;
-	const sources = sourcesFromUnknown(rel.properties ?? {});
+	const sources = mergeSources(sourcesFromUnknown(rel), sourcesFromUnknown(rel.properties ?? {}));
 	if (sources.length === 0) return undefined;
 	return { value: rel.name.trim(), sources };
 }
@@ -389,31 +398,45 @@ function slugColorKey(value: string): string {
 		.slice(0, 48);
 }
 
+function hasSourced(field?: SourcedField): boolean {
+	return Boolean(field?.value?.trim() && field.sources.length > 0);
+}
+
 function evidenceState(dossier: Pick<SatelliteDossier, 'operator' | 'ultimateParent' | 'country' | 'purpose'>): EvidenceState {
-	const filled = [dossier.operator, dossier.ultimateParent, dossier.country, dossier.purpose].filter(Boolean);
+	const filled = [dossier.operator, dossier.ultimateParent, dossier.country, dossier.purpose].filter(hasSourced);
 	if (filled.length === 0) return 'unknown';
-	if (dossier.operator && (dossier.ultimateParent || dossier.country) && filled.length >= 2) return 'verified';
+	if (hasSourced(dossier.operator) && (hasSourced(dossier.ultimateParent) || hasSourced(dossier.country)) && filled.length >= 2) {
+		return 'verified';
+	}
 	if (filled.length >= 3) return 'verified';
 	return 'partial';
 }
 
-function finishDossier(partial: Omit<SatelliteDossier, 'evidenceState' | 'sources' | 'colorKey'> & {
-	sources?: CalaSource[];
-}): SatelliteDossier {
+function finishDossier(
+	partial: Omit<SatelliteDossier, 'evidenceState' | 'sources'> & {
+		sources?: CalaSource[];
+	},
+): SatelliteDossier {
 	const sources = mergeSources(
 		partial.sources,
-		partial.operator?.sources,
-		partial.ultimateParent?.sources,
-		partial.country?.sources,
-		partial.purpose?.sources,
+		hasSourced(partial.operator) ? partial.operator?.sources : undefined,
+		hasSourced(partial.ultimateParent) ? partial.ultimateParent?.sources : undefined,
+		hasSourced(partial.country) ? partial.country?.sources : undefined,
+		hasSourced(partial.purpose) ? partial.purpose?.sources : undefined,
 	);
 	const state = evidenceState(partial);
-	const colorSeed = partial.ultimateParent?.value ?? partial.operator?.value;
+	const colorSeed = hasSourced(partial.ultimateParent)
+		? partial.ultimateParent?.value
+		: hasSourced(partial.operator)
+			? partial.operator?.value
+			: undefined;
+	const colorKey = state !== 'unknown' && colorSeed ? slugColorKey(colorSeed) : partial.colorKey;
 	return {
 		...partial,
 		evidenceState: state,
 		sources,
-		colorKey: state === 'unknown' || !colorSeed ? undefined : slugColorKey(colorSeed),
+		colorKey,
+		seeded: state === 'unknown' && partial.seeded === true,
 	};
 }
 
@@ -491,7 +514,7 @@ export function constellationFromName(name: string | undefined): string | undefi
 	return undefined;
 }
 
-function groupKey(object: CatalogObject): string {
+export function groupKey(object: CatalogObject): string {
 	const constellation = (object.constellation ?? constellationFromName(object.name))?.toUpperCase();
 	if (constellation) return `constellation:${constellation}`;
 	const cleaned = object.name?.replace(/\s+/g, ' ').trim();
@@ -630,12 +653,14 @@ function dossierFromEntity(entity: RetrievedEntity, matchKind: MatchKind, object
 		firstRelated(outgoing, (edge) => edgeLooksLike(edge, /INDUSTRY|PURPOSE|SECTOR|OPERATES_IN/));
 
 	const parent =
-		firstRelated(incoming, (edge) => edgeLooksLike(edge, /ULTIMATE_PARENT|DIRECT_PARENT|DIRECT_OWNER|BENEFICIARY_OWNER|SUBSIDIARY_OF/)) ??
-		firstRelated(outgoing, (edge) => edgeLooksLike(edge, /IS_SUBSIDIARY_OF|OWNED_BY/));
+		firstRelated(incoming, (edge) =>
+			edgeLooksLike(edge, /ULTIMATE_PARENT|DIRECT_PARENT|DIRECT_OWNER|IS_DIRECT_OWNER|BENEFICIARY_OWNER|SUBSIDIARY_OF/),
+		) ??
+		firstRelated(outgoing, (edge) => edgeLooksLike(edge, /IS_SUBSIDIARY_OF|OWNED_BY|IS_ULTIMATE_PARENT/));
 
 	const operatedBy =
-		firstRelated(outgoing, (edge) => edgeLooksLike(edge, /OPERAT|MANUFACTUR|OWNED_BY|IS_OWNER/)) ??
-		firstRelated(incoming, (edge) => edgeLooksLike(edge, /OPERAT|MANUFACTUR|OWNED_BY|IS_OWNER/));
+		firstRelated(outgoing, (edge) => edgeLooksLike(edge, /OPERAT|MANUFACTUR|OWNED_BY|IS_OWNER|IS_DIRECT_OWNER/)) ??
+		firstRelated(incoming, (edge) => edgeLooksLike(edge, /OPERAT|MANUFACTUR|OWNED_BY|IS_OWNER|IS_DIRECT_OWNER/));
 
 	let operator: SourcedField | undefined;
 	if (['Company', 'Organization', 'IntergovernmentalOrganization'].includes(entity.entity_type)) {
@@ -670,13 +695,13 @@ function projectionFromIntrospection(intro: IntrospectionResponse): EntityQuery 
 
 	const outgoing: Record<string, { limit: number }> = {};
 	for (const edge of intro.relationships.outgoing ?? []) {
-		if (edgeLooksLike(edge, /HEADQUARTER|REGISTERED_IN|JURISDICTION|COUNTRY|INDUSTRY|PURPOSE|SECTOR|OPERAT|PARENT|OWNER|SUBSIDIARY|LOCATED/)) {
+		if (edgeLooksLike(edge, /HEADQUARTER|REGISTERED_IN|JURISDICTION|COUNTRY|INDUSTRY|PURPOSE|SECTOR|OPERAT|PARENT|OWNER|SUBSIDIARY|LOCATED|IS_DIRECT_OWNER/)) {
 			outgoing[edge] = { limit: 5 };
 		}
 	}
 	const incoming: Record<string, { limit: number }> = {};
 	for (const edge of intro.relationships.incoming ?? []) {
-		if (edgeLooksLike(edge, /PARENT|OWNER|SUBSIDIARY|OPERAT|BENEFICIARY|REGISTERED|HEADQUARTER/)) {
+		if (edgeLooksLike(edge, /PARENT|OWNER|SUBSIDIARY|OPERAT|BENEFICIARY|REGISTERED|HEADQUARTER|IS_DIRECT_OWNER|ULTIMATE_PARENT/)) {
 			incoming[edge] = { limit: 5 };
 		}
 	}
@@ -702,37 +727,90 @@ async function resolveFromNames(object: CatalogObject, names: string[], fallback
 	return unknownDossier(object);
 }
 
+function dossierForObject(object: CatalogObject): SatelliteDossier {
+	const node = getGraphNode(groupKey(object));
+	if (!node) {
+		return finishDossier({
+			noradId: object.noradId,
+			celestrakName: object.name,
+			constellationHint: object.constellation ?? constellationFromName(object.name),
+		});
+	}
+	return finishDossier({ ...dossierFromGraphNode(node, object) });
+}
+
+function persistResolved(object: CatalogObject, dossier: SatelliteDossier) {
+	const key = groupKey(object);
+	if (dossier.entityId && dossier.evidenceState !== 'unknown') {
+		const record: GraphCalaRecord = {
+			entityId: dossier.entityId,
+			entityName: dossier.entityName ?? '',
+			operator: dossier.operator,
+			ultimateParent: dossier.ultimateParent,
+			country: dossier.country,
+			purpose: dossier.purpose,
+			sources: dossier.sources,
+			evidenceState: dossier.evidenceState,
+			colorKey: dossier.colorKey,
+			matchKind: dossier.matchKind ?? 'operator',
+			fetchedAt: new Date().toISOString(),
+		};
+		putGraphCala(key, record);
+		clearRateLimit();
+		return;
+	}
+	markGraphLookupAttempted(key, dossier.matchKind ?? 'operator');
+}
+
+function unknownDossier(object: CatalogObject): SatelliteDossier {
+	return dossierForObject(object);
+}
+
 /**
- * Resolve one catalog object. Cache-aware. Throws CalaError on halt conditions.
+ * Resolve one catalog object. Graph-first: reuse a constellation node forever.
+ * Throws CalaError on halt conditions. On 429, callers should serve seed nodes.
  */
 export async function resolveDossier(object: CatalogObject): Promise<SatelliteDossier> {
+	await ensureGraphHydrated();
 	if (!NORAD_ID_RE.test(object.noradId)) {
-		return unknownDossier(object);
+		return dossierForObject(object);
 	}
-	const cached = cacheGet(object.noradId);
-	if (cached) return cached;
+
+	const node = getGraphNode(groupKey(object));
+	if (graphHasSourcedCala(node) || isGraphLookupFresh(node)) {
+		return dossierForObject(object);
+	}
+
+	const rate = getRateLimitState();
+	if (rate.blocked) {
+		if (node?.seed) return dossierForObject(object);
+		throw new CalaError(
+			'rate_limited',
+			'Cala rate limit exceeded (HTTP 429). Halted; not retrying.',
+			429,
+			rate.retryAfterMs,
+		);
+	}
 
 	const plan = searchPlan(object);
 	const dossier = await resolveFromNames(object, plan.names, plan.matchKind);
-	cacheSet(dossier);
-	return dossier;
+	persistResolved(object, dossier);
+	return dossierForObject(object);
 }
 
 function haltFrom(error: unknown): EnrichmentHalt | undefined {
 	if (!(error instanceof CalaError)) return undefined;
 	if (error.code === 'http') return undefined;
-	return { code: error.code, message: error.message };
+	return { code: error.code, message: error.message, retryAfterMs: error.retryAfterMs };
 }
 
 function applyTemplate(template: SatelliteDossier, object: CatalogObject): SatelliteDossier {
-	const dossier = finishDossier({
+	return finishDossier({
 		...template,
 		noradId: object.noradId,
 		celestrakName: object.name ?? template.celestrakName,
 		constellationHint: object.constellation ?? template.constellationHint ?? constellationFromName(object.name),
 	});
-	cacheSet(dossier);
-	return dossier;
 }
 
 /**
@@ -740,9 +818,12 @@ function applyTemplate(template: SatelliteDossier, object: CatalogObject): Satel
  * one Cala lookup (Cala has constellation/operator/product entities, not
  * per-NORAD satellites). Selected NORAD is resolved first. Remaining unique
  * groups are capped; extras come back in `skipped` for a later batch. Halts
- * the rest of the batch on 429 / unreachable / timeout.
+ * the rest of the batch on 429 / unreachable / timeout. Seed nodes still
+ * return so the globe can paint without burning quota.
  */
 export async function enrichSatellites(request: EnrichmentRequest): Promise<EnrichmentResponse> {
+	await ensureGraphHydrated();
+
 	const byId = new Map<string, CatalogObject>();
 	for (const sat of request.satellites) {
 		if (!NORAD_ID_RE.test(sat.noradId)) continue;
@@ -760,12 +841,28 @@ export async function enrichSatellites(request: EnrichmentRequest): Promise<Enri
 		if (sat.noradId !== request.selectedNoradId) ordered.push(sat);
 	}
 
+	const rate = getRateLimitState();
 	const dossiers = new Map<string, SatelliteDossier>();
 	const pending: CatalogObject[] = [];
 	for (const sat of ordered) {
-		const cached = cacheGet(sat.noradId);
-		if (cached) dossiers.set(sat.noradId, { ...cached, celestrakName: sat.name ?? cached.celestrakName });
-		else pending.push(sat);
+		const node = getGraphNode(groupKey(sat));
+		if (graphHasSourcedCala(node) || isGraphLookupFresh(node) || rate.blocked) {
+			dossiers.set(sat.noradId, dossierForObject(sat));
+		} else {
+			pending.push(sat);
+		}
+	}
+
+	if (rate.blocked) {
+		return {
+			dossiers: [...dossiers.values()],
+			skipped: pending.map((sat) => sat.noradId),
+			halted: {
+				code: 'rate_limited',
+				message: 'Cala rate limit exceeded (HTTP 429). Halted; not retrying.',
+				retryAfterMs: rate.retryAfterMs,
+			},
+		};
 	}
 
 	const groups = new Map<string, CatalogObject[]>();
@@ -802,11 +899,12 @@ export async function enrichSatellites(request: EnrichmentRequest): Promise<Enri
 				message: error instanceof Error ? error.message : 'Cala lookup failed.',
 			};
 			for (const member of members) {
-				if (!dossiers.has(member.noradId)) dossiers.set(member.noradId, unknownDossier(member));
+				if (!dossiers.has(member.noradId)) dossiers.set(member.noradId, dossierForObject(member));
 			}
 			for (const [, rest] of groupEntries) {
 				for (const member of rest) {
 					if (!dossiers.has(member.noradId) && !skipped.includes(member.noradId)) {
+						dossiers.set(member.noradId, dossierForObject(member));
 						skipped.push(member.noradId);
 					}
 				}

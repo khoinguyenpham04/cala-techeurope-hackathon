@@ -4,7 +4,12 @@ import { GlobeCanvas } from "@/components/sky/globe-canvas";
 import { SkyHud } from "@/components/sky/sky-hud";
 import type { EnrichmentHalt } from "@/lib/cala";
 import type { City } from "@/lib/geo/cities";
-import type { CatalogSource, SatelliteOverlayMap, VisibleSatellite } from "@/lib/orbit/types";
+import type {
+  CatalogSource,
+  SatelliteOverlayMap,
+  SlimOmm,
+  VisibleSatellite,
+} from "@/lib/orbit/types";
 
 export function GlobeWorkspace({
   city,
@@ -13,6 +18,7 @@ export function GlobeWorkspace({
   overlay,
   selected,
   selectedNoradId,
+  selectedOmm,
   onSelect,
   loading,
   source,
@@ -28,6 +34,7 @@ export function GlobeWorkspace({
   overlay: SatelliteOverlayMap;
   selected: VisibleSatellite | null;
   selectedNoradId: string | null;
+  selectedOmm: SlimOmm | null;
   onSelect: (noradId: string | null) => void;
   loading: boolean;
   source: CatalogSource | undefined;
@@ -44,6 +51,7 @@ export function GlobeWorkspace({
         onSelect={onSelect}
         overlay={overlay}
         selectedNoradId={selectedNoradId}
+        selectedOmm={selectedOmm}
         visible={visible}
       />
       <SkyHud
@@ -55,6 +63,7 @@ export function GlobeWorkspace({
         onSelect={onSelect}
         overlay={overlay}
         selected={selected}
+        selectedOmm={selectedOmm}
         showSidebarTrigger={showSidebarTrigger}
         source={source}
         stale={stale}

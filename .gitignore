@@ -9,6 +9,9 @@ node_modules/
 # OS
 .DS_Store
 
+# Last-good CelesTrak OMM snapshot (Next orbit cache)
+web/.cache/
+
 # Logs
 npm-debug.log*
 yarn-debug.log*

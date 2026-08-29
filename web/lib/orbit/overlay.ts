@@ -17,6 +17,8 @@ export type OverlayDossier = {
   ownerColor?: string | null;
   /** Cala slug (hashed) or a CSS color. Ignored when evidence is `unknown`. */
   colorKey?: string | null;
+  /** Catalog seed paint — not Cala evidence. Overwritten when sourced. */
+  seeded?: boolean;
   sources?: SatelliteOverlay["sources"];
 };
 
@@ -70,7 +72,7 @@ function looksLikeCssColor(value: string): boolean {
 }
 
 function ownerColorFor(row: OverlayDossier): string | null {
-  if (row.evidenceState === "unknown") return null;
+  if (row.evidenceState === "unknown" && !row.seeded) return null;
   const explicit = row.ownerColor?.trim();
   if (explicit) return explicit;
   const key = row.colorKey?.trim();
@@ -92,6 +94,7 @@ export function overlayFromDossiers(dossiers: OverlayDossier[]): SatelliteOverla
       operator: fieldValue(row.operator),
       purpose: fieldValue(row.purpose),
       evidenceState: row.evidenceState,
+      seeded: row.seeded === true,
       sources: row.sources?.map((source) => ({
         name: source.name,
         url: source.url,

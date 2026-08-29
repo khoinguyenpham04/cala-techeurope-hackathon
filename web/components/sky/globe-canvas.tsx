@@ -7,7 +7,7 @@ export const GlobeCanvas = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="flex h-full w-full items-center justify-center bg-[#05070c] text-muted-foreground text-xs">
+      <div className="flex h-full w-full items-center justify-center bg-black text-muted-foreground text-xs">
         Initializing globe…
       </div>
     ),
