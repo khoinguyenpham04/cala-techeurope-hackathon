@@ -147,6 +147,12 @@ export interface SceneScratch {
   z: number;
 }
 
+export interface GeodeticScratch {
+  latitudeDeg: number;
+  longitudeDeg: number;
+  altitudeKm: number;
+}
+
 /**
  * Lerp scene-space position for `currIndex` between the two 1 Hz samples.
  * New satellites (no previous match) snap to the current sample — never (0,0,0).
@@ -173,6 +179,33 @@ export function lerpSampleScene(
   out.x = lerp(pair.prev.floats[prevBase + VISIBLE_X]!, currX, t);
   out.y = lerp(pair.prev.floats[prevBase + VISIBLE_Y]!, currY, t);
   out.z = lerp(pair.prev.floats[prevBase + VISIBLE_Z]!, currZ, t);
+}
+
+/**
+ * Lerp lat/lon/alt for COBE markers. Same 1 Hz pair as the worker; never
+ * re-runs SGP4. New sats snap to the current sample.
+ */
+export function lerpSampleGeodetic(
+  out: GeodeticScratch,
+  pair: OrbitSamplePair,
+  currIndex: number,
+  t: number,
+): void {
+  const currBase = currIndex * VISIBLE_FLOAT_STRIDE;
+  const lat = pair.curr.floats[currBase + VISIBLE_LAT]!;
+  const lon = pair.curr.floats[currBase + VISIBLE_LON]!;
+  const alt = pair.curr.floats[currBase + VISIBLE_ALT]!;
+  const prevIndex = pair.prevIndexByNorad.get(pair.curr.noradIds[currIndex]!);
+  if (prevIndex === undefined) {
+    out.latitudeDeg = lat;
+    out.longitudeDeg = lon;
+    out.altitudeKm = alt;
+    return;
+  }
+  const prevBase = prevIndex * VISIBLE_FLOAT_STRIDE;
+  out.latitudeDeg = lerp(pair.prev.floats[prevBase + VISIBLE_LAT]!, lat, t);
+  out.longitudeDeg = lerpLongitudeDeg(pair.prev.floats[prevBase + VISIBLE_LON]!, lon, t);
+  out.altitudeKm = lerp(pair.prev.floats[prevBase + VISIBLE_ALT]!, alt, t);
 }
 
 export function decodeVisibleSatellites(

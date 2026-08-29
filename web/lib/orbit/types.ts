@@ -21,6 +21,14 @@ export interface SlimOmm {
 
 export type CatalogSource = "live" | "cache" | "stale" | "seed";
 
+/**
+ * Seed bundle or 403-stale snapshot — not a live CelesTrak download.
+ * `cache` is a successful live fetch still inside the 2h TTL; that is live.
+ */
+export function isFallbackCatalog(source: CatalogSource | undefined): boolean {
+  return source === "seed" || source === "stale";
+}
+
 export interface OrbitCatalogResponse {
   records: SlimOmm[];
   fetchedAt: string | null;
@@ -39,9 +47,12 @@ export interface ObserverLocation {
 }
 
 /**
- * One payload currently above the observer (elevation > 0°).
- * Altitude/elevation are the real physical values for the inspector;
- * `displayRadius` is the compressed scene radius for the globe.
+ * One payload currently drawn on the globe.
+ * Default view is the full catalog shell ("All orbits"). HUD "Above city"
+ * filters to elevation > 0° over the observer.
+ * Altitude/elevation are the real physical values for the inspector.
+ * COBE markers use `[latitudeDeg, longitudeDeg]`. Altitude is inspector-only.
+ * `displayRadius` is a leftover compressed Three.js scale (fixtures).
  */
 export interface VisibleSatellite {
   noradId: string;
@@ -79,6 +90,7 @@ export interface SatelliteOverlay {
   ownerColor?: string | null;
   ultimateParent?: string | null;
   operator?: string | null;
+  country?: string | null;
   purpose?: string | null;
   evidenceState?: EvidenceState;
   /** Catalog seed paint — not Cala evidence. */

@@ -7,7 +7,8 @@ export const GlobeCanvas = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="flex h-full w-full items-center justify-center bg-black text-muted-foreground text-xs">
+      // Catalog cache status lives in the HUD, not this globe-center placeholder.
+      <div className="absolute inset-0 flex items-center justify-center bg-black text-muted-foreground text-xs">
         Initializing globe…
       </div>
     ),

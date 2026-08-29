@@ -1,232 +1,66 @@
 "use client";
 
-import { CityMarker } from "@/components/sky/city-marker";
-import { OrbitPath } from "@/components/sky/orbit-path";
-import { SatelliteLayer } from "@/components/sky/satellite-layer";
-import type { City } from "@/lib/geo/cities";
+import "@/components/sky/cobe-globe.css";
+
+import { markerIdForNorad, lerpAngle, locationToAngles } from "@/lib/orbit/cobe-view";
+import { COBE_MAX_MARKERS, COBE_HIT_TARGET_MAX } from "@/lib/orbit/constants";
+import { cssColorToRgb } from "@/lib/orbit/css-color";
+import { overlayFor, resolveDotColor } from "@/lib/orbit/overlay";
 import {
-  EARTH_RADIUS_SCENE,
-  EARTH_TILT_DEG,
-} from "@/lib/orbit/constants";
-import { geodeticToScene } from "@/lib/orbit/coordinates";
-import type { SatelliteOverlayMap, SlimOmm, VisibleSatellite } from "@/lib/orbit/types";
-import { OrbitControls, Stars } from "@react-three/drei";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { useEffect, useMemo, useRef, useState } from "react";
-import * as THREE from "three";
+  getOrbitSamplePair,
+  lerpSampleGeodetic,
+  sampleAlpha,
+  type GeodeticScratch,
+} from "@/lib/orbit/sample-buffer";
+import type { City } from "@/lib/geo/cities";
+import type { SatelliteOverlayMap, VisibleSatellite } from "@/lib/orbit/types";
+import createGlobe, { type Arc, type COBEOptions, type Marker } from "cobe";
+import { useTheme } from "next-themes";
+import { useEffect, useMemo, useRef } from "react";
 
-/**
- * Drop NASA Blue Marble Next Generation (equirectangular JPEG) here:
- * https://eoimages.gsfc.nasa.gov/images/imagerecords/73000/73909/world.topo.bathy.200412.3x5400x2700.jpg
- * Page: https://visibleearth.nasa.gov/images/73909/december-blue-marble-next-generation
- * File: `web/public/earth/blue-marble.jpg` → URL `/earth/blue-marble.jpg`.
- * Missing file keeps the procedural Earth; we do not retry after a failed load.
- */
-const BLUE_MARBLE_URL = "/earth/blue-marble.jpg";
+const CITY_MARKER_ID = "city";
+const SELECTED_RGB: [number, number, number] = [0.29, 0.871, 0.502];
+const CITY_RGB: [number, number, number] = [0.2, 0.4, 1];
+const ARC_RGB: [number, number, number] = [0.35, 0.55, 1];
+const geoScratch: GeodeticScratch = { latitudeDeg: 0, longitudeDeg: 0, altitudeKm: 0 };
 
-let blueMarbleFailed = false;
+type CobeLook = Pick<
+  COBEOptions,
+  | "dark"
+  | "diffuse"
+  | "mapBrightness"
+  | "mapBaseBrightness"
+  | "baseColor"
+  | "glowColor"
+  | "markerColor"
+>;
 
-function makeGraticuleTexture() {
-  const canvas = document.createElement("canvas");
-  canvas.width = 1024;
-  canvas.height = 512;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) {
-    return new THREE.CanvasTexture(canvas);
-  }
+const LIGHT_LOOK: CobeLook = {
+  dark: 0,
+  diffuse: 1.2,
+  mapBrightness: 6,
+  mapBaseBrightness: 0.02,
+  baseColor: [1, 1, 1],
+  glowColor: [1, 1, 1],
+  markerColor: CITY_RGB,
+};
 
-  ctx.fillStyle = "#0b1220";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+const DARK_LOOK: CobeLook = {
+  dark: 1,
+  diffuse: 1.2,
+  mapBrightness: 6,
+  mapBaseBrightness: 0.05,
+  baseColor: [0.42, 0.48, 0.62],
+  glowColor: [0.12, 0.16, 0.24],
+  markerColor: CITY_RGB,
+};
 
-  ctx.strokeStyle = "rgba(148, 163, 184, 0.16)";
-  ctx.lineWidth = 1;
-  for (let i = 0; i <= 24; i += 1) {
-    const x = (i / 24) * canvas.width;
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, canvas.height);
-    ctx.stroke();
-  }
-  for (let j = 0; j <= 12; j += 1) {
-    const y = (j / 12) * canvas.height;
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(canvas.width, y);
-    ctx.stroke();
-  }
-
-  ctx.strokeStyle = "rgba(56, 189, 248, 0.35)";
-  ctx.beginPath();
-  ctx.moveTo(0, canvas.height / 2);
-  ctx.lineTo(canvas.width, canvas.height / 2);
-  ctx.stroke();
-
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = 4;
-  texture.needsUpdate = true;
-  return texture;
+function lookForTheme(resolvedTheme: string | undefined): CobeLook {
+  return resolvedTheme === "light" ? LIGHT_LOOK : DARK_LOOK;
 }
 
-function Earth() {
-  const gl = useThree((state) => state.gl);
-  const [marble, setMarble] = useState<THREE.Texture | null>(null);
-  const grid = useMemo(() => makeGraticuleTexture(), []);
-
-  useEffect(() => {
-    if (blueMarbleFailed) return;
-    let cancelled = false;
-    let loaded: THREE.Texture | null = null;
-
-    const loader = new THREE.TextureLoader();
-    loader.load(
-      BLUE_MARBLE_URL,
-      (texture) => {
-        if (cancelled) {
-          texture.dispose();
-          return;
-        }
-        texture.colorSpace = THREE.SRGBColorSpace;
-        texture.anisotropy = Math.min(16, gl.capabilities.getMaxAnisotropy());
-        texture.minFilter = THREE.LinearMipmapLinearFilter;
-        texture.magFilter = THREE.LinearFilter;
-        texture.generateMipmaps = true;
-        texture.needsUpdate = true;
-        loaded = texture;
-        setMarble(texture);
-      },
-      undefined,
-      () => {
-        blueMarbleFailed = true;
-      },
-    );
-
-    return () => {
-      cancelled = true;
-      loaded?.dispose();
-    };
-  }, [gl]);
-
-  useEffect(() => {
-    if (marble) grid.dispose();
-  }, [grid, marble]);
-
-  useEffect(() => () => grid.dispose(), [grid]);
-
-  const photo = marble != null;
-
-  return (
-    <group>
-      <mesh>
-        <sphereGeometry args={[EARTH_RADIUS_SCENE, 96, 64]} />
-        <meshStandardMaterial
-          color={photo ? "#ffffff" : "#c5d4e8"}
-          emissive={photo ? "#000000" : "#0b1220"}
-          emissiveIntensity={photo ? 0 : 0.4}
-          map={marble ?? grid}
-          metalness={0.04}
-          roughness={photo ? 0.82 : 0.92}
-        />
-      </mesh>
-      <mesh>
-        <sphereGeometry args={[EARTH_RADIUS_SCENE * 1.028, 48, 32]} />
-        <meshBasicMaterial
-          color={photo ? "#6ea8ff" : "#5b8def"}
-          opacity={photo ? 0.1 : 0.14}
-          side={THREE.BackSide}
-          transparent
-        />
-      </mesh>
-    </group>
-  );
-}
-
-function applyTilt(point: THREE.Vector3, tiltRad: number) {
-  point.applyAxisAngle(new THREE.Vector3(1, 0, 0), tiltRad);
-  return point;
-}
-
-function cityCameraPosition(city: City) {
-  const surface = geodeticToScene(
-    city.latitudeDeg,
-    city.longitudeDeg,
-    EARTH_RADIUS_SCENE * 3.15,
-  );
-  const dest = applyTilt(
-    new THREE.Vector3(surface.x, surface.y, surface.z),
-    THREE.MathUtils.degToRad(EARTH_TILT_DEG),
-  );
-  dest.y += 0.35;
-  return dest;
-}
-
-function CameraRig({ city }: { city: City }) {
-  const { camera } = useThree();
-  const dest = useRef(new THREE.Vector3());
-  const animating = useRef(true);
-
-  useEffect(() => {
-    dest.current.copy(cityCameraPosition(city));
-    animating.current = true;
-  }, [city]);
-
-  useFrame(() => {
-    if (!animating.current) return;
-    camera.position.lerp(dest.current, 0.1);
-    camera.lookAt(0, 0, 0);
-    if (camera.position.distanceTo(dest.current) < 0.03) {
-      animating.current = false;
-    }
-  });
-
-  return null;
-}
-
-function GlobeContents({
-  city,
-  visible,
-  overlay,
-  selectedNoradId,
-  selectedOmm,
-  onSelect,
-}: {
-  city: City;
-  visible: VisibleSatellite[];
-  overlay: SatelliteOverlayMap;
-  selectedNoradId: string | null;
-  selectedOmm: SlimOmm | null;
-  onSelect: (noradId: string | null) => void;
-}) {
-  const tilt = THREE.MathUtils.degToRad(EARTH_TILT_DEG);
-
-  return (
-    <>
-      <color args={["#000000"]} attach="background" />
-      <ambientLight intensity={0.55} />
-      <directionalLight intensity={2.1} position={[6, 3.2, 4]} />
-      <directionalLight color="#93c5fd" intensity={0.18} position={[-5, -2, -3]} />
-      <Stars count={1400} depth={40} factor={1.8} fade radius={60} speed={0.15} />
-      <group rotation={[tilt, 0, 0]}>
-        <Earth />
-        <CityMarker city={city} />
-        <OrbitPath omm={selectedOmm} />
-        <SatelliteLayer
-          onSelect={onSelect}
-          overlay={overlay}
-          selectedNoradId={selectedNoradId}
-          visible={visible}
-        />
-      </group>
-      <CameraRig city={city} />
-      <OrbitControls
-        dampingFactor={0.08}
-        enableDamping
-        enablePan={false}
-        maxDistance={8.5}
-        minDistance={2.45}
-      />
-    </>
-  );
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }
 
 export function GlobeScene({
@@ -234,51 +68,290 @@ export function GlobeScene({
   visible,
   overlay,
   selectedNoradId,
-  selectedOmm = null,
   onSelect,
 }: {
   city: City;
   visible: VisibleSatellite[];
   overlay: SatelliteOverlayMap;
   selectedNoradId: string | null;
-  selectedOmm?: SlimOmm | null;
   onSelect: (noradId: string | null) => void;
 }) {
-  const glRef = useRef<THREE.WebGLRenderer | null>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const cityRef = useRef(city);
+  const overlayRef = useRef(overlay);
+  const visibleRef = useRef(visible);
+  const selectedRef = useRef(selectedNoradId);
+  const onSelectRef = useRef(onSelect);
+  const focusRef = useRef(locationToAngles(city.latitudeDeg, city.longitudeDeg));
+  const { resolvedTheme } = useTheme();
+  const lookRef = useRef(lookForTheme(resolvedTheme));
+  cityRef.current = city;
+  overlayRef.current = overlay;
+  visibleRef.current = visible;
+  selectedRef.current = selectedNoradId;
+  onSelectRef.current = onSelect;
+  lookRef.current = lookForTheme(resolvedTheme);
+
+  const hits = useMemo(() => {
+    const seen = new Set<string>();
+    const rows: Array<{ noradId: string; name: string }> = [];
+    const selected = visible.find((sat) => sat.noradId === selectedNoradId);
+    if (selected) {
+      rows.push({ noradId: selected.noradId, name: selected.name });
+      seen.add(selected.noradId);
+    }
+    for (const sat of visible) {
+      if (rows.length >= COBE_HIT_TARGET_MAX) break;
+      if (seen.has(sat.noradId)) continue;
+      seen.add(sat.noradId);
+      rows.push({ noradId: sat.noradId, name: sat.name });
+    }
+    return rows;
+  }, [visible, selectedNoradId]);
+
+  const selected = selectedNoradId
+    ? visible.find((sat) => sat.noradId === selectedNoradId)
+    : undefined;
 
   useEffect(() => {
+    focusRef.current = locationToAngles(city.latitudeDeg, city.longitudeDeg);
+  }, [city.id, city.latitudeDeg, city.longitudeDeg]);
+
+  useEffect(() => {
+    if (!selectedNoradId) return;
+    const sat = visibleRef.current.find((row) => row.noradId === selectedNoradId);
+    if (!sat) return;
+    focusRef.current = locationToAngles(sat.latitudeDeg, sat.longitudeDeg);
+  }, [selectedNoradId]);
+
+  useEffect(() => {
+    const wrap = wrapRef.current;
+    const canvas = canvasRef.current;
+    if (!wrap || !canvas) return;
+
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const start = locationToAngles(cityRef.current.latitudeDeg, cityRef.current.longitudeDeg);
+    let phi = start.phi;
+    let theta = start.theta;
+    let scale = 1.05;
+    let dragging = false;
+    let moved = false;
+    let pointerId: number | null = null;
+    let lastX = 0;
+    let lastY = 0;
+    let raf = 0;
+    const markers: Marker[] = [];
+    const arcs: Arc[] = [];
+
+    const pixelSize = () => {
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      const width = Math.max(16, wrap.clientWidth);
+      const height = Math.max(16, wrap.clientHeight);
+      return { width: width * dpr, height: height * dpr, dpr };
+    };
+
+    const size = pixelSize();
+    const globe = createGlobe(canvas, {
+      devicePixelRatio: size.dpr,
+      width: size.width,
+      height: size.height,
+      phi,
+      theta,
+      ...lookRef.current,
+      mapSamples: 16_000,
+      markers: [],
+      arcs: [],
+      arcColor: ARC_RGB,
+      arcWidth: 0.45,
+      arcHeight: 0.28,
+      markerElevation: 0.02,
+      scale,
+      opacity: 1,
+      offset: [0, 0],
+      context: { alpha: true, antialias: true, preserveDrawingBuffer: false },
+    });
+
+    const fillMarkers = () => {
+      const pair = getOrbitSamplePair();
+      const t = sampleAlpha(performance.now() - pair.curr.arrivedAtMs);
+      const overlayMap = overlayRef.current;
+      const selectedId = selectedRef.current;
+      const cityNow = cityRef.current;
+      const count = Math.min(pair.curr.count, COBE_MAX_MARKERS);
+      markers.length = 0;
+      arcs.length = 0;
+
+      markers.push({
+        id: CITY_MARKER_ID,
+        location: [cityNow.latitudeDeg, cityNow.longitudeDeg],
+        size: 0.055,
+        color: CITY_RGB,
+      });
+
+      let selectedLocation: [number, number] | null = null;
+      for (let index = 0; index < count; index += 1) {
+        lerpSampleGeodetic(geoScratch, pair, index, t);
+        const noradId = String(pair.curr.noradIds[index]!);
+        const isSelected = noradId === selectedId;
+        const location: [number, number] = [geoScratch.latitudeDeg, geoScratch.longitudeDeg];
+        if (isSelected) selectedLocation = location;
+        markers.push({
+          id: markerIdForNorad(noradId),
+          location,
+          size: isSelected ? 0.08 : 0.022,
+          color: isSelected
+            ? SELECTED_RGB
+            : cssColorToRgb(resolveDotColor(overlayFor(overlayMap, noradId))),
+        });
+      }
+
+      if (selectedId && !selectedLocation) {
+        for (let index = count; index < pair.curr.count; index += 1) {
+          if (String(pair.curr.noradIds[index]!) !== selectedId) continue;
+          lerpSampleGeodetic(geoScratch, pair, index, t);
+          selectedLocation = [geoScratch.latitudeDeg, geoScratch.longitudeDeg];
+          markers.push({
+            id: markerIdForNorad(selectedId),
+            location: selectedLocation,
+            size: 0.08,
+            color: SELECTED_RGB,
+          });
+          break;
+        }
+      }
+
+      if (selectedLocation) {
+        arcs.push({
+          id: "look",
+          from: [cityNow.latitudeDeg, cityNow.longitudeDeg],
+          to: selectedLocation,
+          color: SELECTED_RGB,
+        });
+      }
+    };
+
+    const tick = () => {
+      const target = focusRef.current;
+      if (!dragging) {
+        phi = lerpAngle(phi, target.phi, reducedMotion ? 1 : 0.08);
+        theta = lerpAngle(theta, target.theta, reducedMotion ? 1 : 0.08);
+        const focused =
+          Math.abs(lerpAngle(0, target.phi - phi, 1)) < 0.004 &&
+          Math.abs(target.theta - theta) < 0.004;
+        if (focused && !reducedMotion) {
+          phi += 0.0022;
+          focusRef.current = { phi, theta };
+        }
+      }
+
+      fillMarkers();
+      const size = pixelSize();
+      globe.update({
+        devicePixelRatio: size.dpr,
+        width: size.width,
+        height: size.height,
+        phi,
+        theta,
+        scale,
+        markers,
+        arcs,
+        ...lookRef.current,
+      });
+      raf = window.requestAnimationFrame(tick);
+    };
+    raf = window.requestAnimationFrame(tick);
+
+    const onPointerDown = (event: PointerEvent) => {
+      dragging = true;
+      moved = false;
+      pointerId = event.pointerId;
+      lastX = event.clientX;
+      lastY = event.clientY;
+      canvas.setPointerCapture(event.pointerId);
+    };
+    const onPointerMove = (event: PointerEvent) => {
+      if (!dragging || event.pointerId !== pointerId) return;
+      const dx = event.clientX - lastX;
+      const dy = event.clientY - lastY;
+      if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
+      lastX = event.clientX;
+      lastY = event.clientY;
+      phi += dx / 220;
+      theta = clamp(theta + dy / 220, -0.9, 0.9);
+      focusRef.current = { phi, theta };
+    };
+    const endPointer = (event: PointerEvent) => {
+      if (event.pointerId !== pointerId) return;
+      dragging = false;
+      pointerId = null;
+      if (!moved) onSelectRef.current(null);
+    };
+
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      scale = clamp(scale - event.deltaY * 0.001, 0.72, 1.55);
+    };
+
+    canvas.addEventListener("pointerdown", onPointerDown);
+    canvas.addEventListener("pointermove", onPointerMove);
+    canvas.addEventListener("pointerup", endPointer);
+    canvas.addEventListener("pointercancel", endPointer);
+    canvas.addEventListener("wheel", onWheel, { passive: false });
+
     return () => {
-      glRef.current?.dispose();
-      glRef.current?.forceContextLoss();
-      glRef.current = null;
+      window.cancelAnimationFrame(raf);
+      canvas.removeEventListener("pointerdown", onPointerDown);
+      canvas.removeEventListener("pointermove", onPointerMove);
+      canvas.removeEventListener("pointerup", endPointer);
+      canvas.removeEventListener("pointercancel", endPointer);
+      canvas.removeEventListener("wheel", onWheel);
+      globe.destroy();
     };
   }, []);
 
   return (
-    <Canvas
-      camera={{ fov: 42, near: 0.1, far: 80, position: [0, 1.1, 4.4] }}
-      dpr={[1, 2]}
-      gl={{
-        antialias: true,
-        alpha: false,
-        powerPreference: "high-performance",
-      }}
-      onCreated={({ gl }) => {
-        glRef.current = gl;
-        gl.setClearColor("#000000");
-        gl.outputColorSpace = THREE.SRGBColorSpace;
-        gl.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-      }}
-      onPointerMissed={() => onSelect(null)}
-    >
-      <GlobeContents
-        city={city}
-        onSelect={onSelect}
-        overlay={overlay}
-        selectedNoradId={selectedNoradId}
-        selectedOmm={selectedOmm}
-        visible={visible}
+    <div className="sky-cobe" ref={wrapRef}>
+      <canvas
+        aria-label="Satellite globe"
+        ref={canvasRef}
       />
-    </Canvas>
+      <div
+        className="sky-cobe-label"
+        style={{
+          positionAnchor: `--cobe-${CITY_MARKER_ID}`,
+          opacity: `var(--cobe-visible-${CITY_MARKER_ID}, 0)`,
+        }}
+      >
+        {city.name}
+      </div>
+      {selected ? (
+        <div
+          className="sky-cobe-label"
+          style={{
+            positionAnchor: `--cobe-${markerIdForNorad(selected.noradId)}`,
+            opacity: `var(--cobe-visible-${markerIdForNorad(selected.noradId)}, 0)`,
+          }}
+        >
+          {selected.name}
+        </div>
+      ) : null}
+      {hits.map((hit) => (
+        <button
+          aria-label={hit.name}
+          className="sky-cobe-hit"
+          key={hit.noradId}
+          onClick={(event) => {
+            event.stopPropagation();
+            onSelect(hit.noradId);
+          }}
+          style={{
+            positionAnchor: `--cobe-${markerIdForNorad(hit.noradId)}`,
+            opacity: `var(--cobe-visible-${markerIdForNorad(hit.noradId)}, 0)`,
+          }}
+          type="button"
+        />
+      ))}
+    </div>
   );
 }

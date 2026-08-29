@@ -16,6 +16,15 @@ import type { CatalogSource, OrbitCatalogResponse, SlimOmm } from "@/lib/orbit/t
 const SNAPSHOT_VERSION = 1;
 const SEED_FETCHED_AT = Date.parse("2026-08-29T00:00:00.000Z");
 
+/**
+ * Why the HUD says "Cached":
+ * CelesTrak often returns non-200 (typically 403). Policy is no retry for
+ * `CELESTRAK_BLOCK_MS` (~2h). Until then we serve `lastGood` (disk snapshot of
+ * a previous live download) or the bundled seed at
+ * `web/lib/orbit/seed/demo-omm.json`. That fallback is why the client shows
+ * Cached — it is not a successful live GP download.
+ */
+
 interface Snapshot {
   records: SlimOmm[];
   fetchedAt: number;
@@ -179,6 +188,7 @@ async function refresh(now: number): Promise<OrbitCatalogResponse> {
     return toResponse(result.snapshot, "live", false);
   }
   if (result.kind === "http") {
+    // 403/non-200: park retries for ~2h (or Retry-After if longer). HUD Cached.
     blockedUntil = now + policyBlockMs(result.retryAfter, CELESTRAK_BLOCK_MS, now);
     persist();
     return staleFromFallback(CELESTRAK_STALE_MESSAGE);
@@ -194,6 +204,7 @@ export async function getOrbitCatalog(now = Date.now()): Promise<OrbitCatalogRes
     return toResponse(lastGood, "cache", false);
   }
   if (now < blockedUntil) {
+    // Still inside the 403 policy window — do not hit CelesTrak; serve snapshot/seed.
     return staleFromFallback(CELESTRAK_STALE_MESSAGE);
   }
   if (inFlight) return inFlight;

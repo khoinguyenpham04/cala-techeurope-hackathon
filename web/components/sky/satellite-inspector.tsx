@@ -86,7 +86,7 @@ export function SatelliteInspector({
 
   return (
     <Card
-      className="pointer-events-auto flex h-full w-[min(100%,18.5rem)] gap-0 bg-card/85 py-0 shadow-lg backdrop-blur-md"
+      className="pointer-events-auto flex h-full max-h-full w-full gap-0 overflow-hidden bg-card/85 py-0 shadow-lg backdrop-blur-md"
       size="sm"
     >
       <CardHeader className="border-b px-3 py-2.5">

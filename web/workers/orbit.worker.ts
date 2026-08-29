@@ -8,7 +8,8 @@ let catalog: PreparedSat[] = [];
 let observer: ObserverLocation | null = null;
 /** null means wall clock; a number pins propagation to a fixed epoch (fixtures). */
 let epochMs: number | null = null;
-let horizonOnly = true;
+/** Cinematic default is the full catalog shell; HUD "Above city" posts true. */
+let horizonOnly = false;
 let timer: ReturnType<typeof setInterval> | null = null;
 const tickBuffers = createVisibleBuffers();
 

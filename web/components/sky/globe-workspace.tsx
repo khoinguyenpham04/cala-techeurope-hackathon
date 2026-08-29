@@ -27,6 +27,8 @@ export function GlobeWorkspace({
   workerError,
   enrichmentHalt,
   showSidebarTrigger,
+  horizonOnly,
+  onHorizonOnlyChange,
 }: {
   city: City;
   onCityChange: (cityId: string) => void;
@@ -43,6 +45,8 @@ export function GlobeWorkspace({
   workerError: string | null;
   enrichmentHalt?: EnrichmentHalt | null;
   showSidebarTrigger: boolean;
+  horizonOnly: boolean;
+  onHorizonOnlyChange: (horizonOnly: boolean) => void;
 }) {
   return (
     <div className="relative min-h-0 flex-1 overflow-hidden bg-[#05070c]">
@@ -51,15 +55,16 @@ export function GlobeWorkspace({
         onSelect={onSelect}
         overlay={overlay}
         selectedNoradId={selectedNoradId}
-        selectedOmm={selectedOmm}
         visible={visible}
       />
       <SkyHud
         catalogError={catalogError}
         city={city}
         enrichmentHalt={enrichmentHalt}
+        horizonOnly={horizonOnly}
         loading={loading}
         onCityChange={onCityChange}
+        onHorizonOnlyChange={onHorizonOnlyChange}
         onSelect={onSelect}
         overlay={overlay}
         selected={selected}

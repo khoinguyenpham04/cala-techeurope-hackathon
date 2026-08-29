@@ -44,6 +44,7 @@ Rules:
 - Use cala_knowledge_search only for genuinely open-ended follow-ups (for example launch funding) about the operator or parent already in the dossier. Pass a question that names that entity. If that search is empty, reply ${EMPTY_CALA_MESSAGE}
 - Never use web search. Never invent sources. On Cala errors (timeout, 429, unreachable, unconfigured), halt and report the tool error; do not guess.
 - Answer in concise markdown. Keep unknown fields visible as unknown.
+- After a sourced markdown answer, you may append a fenced story-page JSON block (\`\`\`story-page) with blocks [{id, type, title?, body?, text?, tone?, sources?}]. type is heading | paragraph | quote | list | callout. tone is verified | unverified | catalog. Reuse ids operator, parent, country, purpose, constellation when updating seed callouts. Never invent values or sources. Never emit this fence when you must reply with only ${EMPTY_CALA_MESSAGE}.
 ${
 	calaReady
 		? ''

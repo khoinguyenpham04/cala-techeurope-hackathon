@@ -8,7 +8,7 @@ Technical detail: [docs/mvp-technical-spec.md](docs/mvp-technical-spec.md).
 
 ## Setup
 
-Two processes. Install once at the repo root (Three.js) plus each app:
+Two processes. Install once at the repo root (leftover Three.js) plus each app:
 
 ```sh
 npm install
@@ -20,6 +20,7 @@ Copy env (no secrets in git):
 
 ```sh
 cp agent/.env.example agent/.env
+cp web/.env.example web/.env.local
 ```
 
 Then run:
@@ -36,7 +37,7 @@ Open [http://localhost:3000](http://localhost:3000). Next rewrites `/api/agents/
 
 ## Environment variables
 
-Set these in **`agent/.env` only**. Never `NEXT_PUBLIC_*`, never the Next app, never the browser.
+Cala keys stay in **`agent/.env` only**. Never `NEXT_PUBLIC_*` for Cala, never the Next app, never the browser.
 
 | Variable | Where | Purpose |
 | --- | --- | --- |
@@ -57,7 +58,7 @@ Cursor MCP inspection (interactive only, not the runtime path): in `~/.cursor/mc
 | [Cala](https://docs.cala.ai/) REST (`knowledge_query`, entity search / introspect / retrieve, `knowledge_search`) | Operator, ultimate parent, country, purpose, citations |
 | [Flue](https://flueframework.com) | Durable agents: `assistant` and `satellite` |
 | [satellite.js](https://github.com/shashwatak/satellite-js) `json2satrec` | Off-main-thread propagation at 1 Hz |
-| Three.js / React Three Fiber | Instanced globe |
+| [COBE](https://cobe.vercel.app) | Lightweight dotted WebGL globe (`cobe@2`) |
 | Tavily | General assistant web search only |
 
 ## Source policy (short)
@@ -66,4 +67,4 @@ CelesTrak proves *what object it is*. Cala proves *who owns it* when a field car
 
 ## Attribution
 
-Orbital elements: **CelesTrak**. Ownership and corporate facts: **Cala**. See [docs/mvp-technical-spec.md](docs/mvp-technical-spec.md) for cache policy, failure discipline, and limitations.
+Attribution: orbital elements **CelesTrak**; ownership **Cala**; globe **[COBE](https://cobe.vercel.app)** (Shu Ding). See [docs/mvp-technical-spec.md](docs/mvp-technical-spec.md) for cache policy, failure discipline, and limitations.

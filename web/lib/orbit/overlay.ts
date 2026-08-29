@@ -12,6 +12,7 @@ export type OverlayDossier = {
   evidenceState?: SatelliteOverlay["evidenceState"];
   operator?: string | { value: string } | null;
   ultimateParent?: string | { value: string } | null;
+  country?: string | { value: string } | null;
   purpose?: string | { value: string } | null;
   /** Explicit CSS color; wins over `colorKey` when set. */
   ownerColor?: string | null;
@@ -92,6 +93,7 @@ export function overlayFromDossiers(dossiers: OverlayDossier[]): SatelliteOverla
       ownerColor: ownerColorFor(row),
       ultimateParent: fieldValue(row.ultimateParent),
       operator: fieldValue(row.operator),
+      country: fieldValue(row.country),
       purpose: fieldValue(row.purpose),
       evidenceState: row.evidenceState,
       seeded: row.seeded === true,

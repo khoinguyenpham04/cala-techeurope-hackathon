@@ -33,9 +33,12 @@ export function SkyConsole({ children }: { children: ReactNode }) {
     }),
     [city.heightKm, city.latitudeDeg, city.longitudeDeg],
   );
+  // Cinematic default: full catalog shell. HUD "Above city" is opt-in.
+  const [horizonOnly, setHorizonOnly] = useState(false);
   const { visible, error: workerError } = useOrbitWorker(
     catalog?.records,
     observer,
+    horizonOnly,
   );
   const { overlay, halt: enrichmentHalt } = useCalaEnrichment(visible, noradId);
   const setCity = useCallback((id: string) => {
@@ -54,10 +57,12 @@ export function SkyConsole({ children }: { children: ReactNode }) {
       city={city}
       enrichmentHalt={enrichmentHalt}
       loading={loading}
+      horizonOnly={horizonOnly}
       onCityChange={(id) => {
         setCity(id);
         setNoradId(null);
       }}
+      onHorizonOnlyChange={setHorizonOnly}
       onSelect={setNoradId}
       overlay={overlay}
       selected={selected}

@@ -11,6 +11,7 @@ import { startTransition, useEffect, useRef, useState } from "react";
 export function useOrbitWorker(
   records: SlimOmm[] | undefined,
   observer: ObserverLocation,
+  horizonOnly = false,
 ) {
   const workerRef = useRef<Worker | null>(null);
   const [visible, setVisible] = useState<VisibleSatellite[]>([]);
@@ -63,6 +64,14 @@ export function useOrbitWorker(
     const message: OrbitWorkerIn = { type: "observer", observer };
     worker.postMessage(message);
   }, [observer, observer.latitudeDeg, observer.longitudeDeg, observer.heightKm]);
+
+  // Filter before catalog so a seed ingest does not flash the 2-sat horizon cut.
+  useEffect(() => {
+    const worker = workerRef.current;
+    if (!worker) return;
+    const message: OrbitWorkerIn = { type: "filter", horizonOnly };
+    worker.postMessage(message);
+  }, [horizonOnly]);
 
   useEffect(() => {
     const worker = workerRef.current;

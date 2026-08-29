@@ -1,4 +1,4 @@
-import { EARTH_RADIUS_SCENE } from "@/lib/orbit/constants";
+import { DISPLAY_ALTITUDE_SCALE, EARTH_RADIUS_SCENE } from "@/lib/orbit/constants";
 
 /**
  * Compressed altitude scale (scene units above the unit-Earth surface).
@@ -13,7 +13,9 @@ import { EARTH_RADIUS_SCENE } from "@/lib/orbit/constants";
  * | MEO               | 2,000 – 20,000 km | 0.32 – 0.48 (log)    |
  * | GEO and beyond    | 20,000 – 50,000 km| 0.48 – 0.58 (log)    |
  *
- * GEO (35,786 km) lands near +0.55.
+ * GEO (35,786 km) lands near +0.55 before `DISPLAY_ALTITUDE_SCALE`.
+ * Display radius multiplies that offset (1.4×) so the LEO shell reads as a
+ * halo when the camera is pulled back. Inspector `altitudeKm` is unchanged.
  */
 export function compressedAltitudeOffset(altitudeKm: number): number {
   const alt = Math.max(0, altitudeKm);
@@ -33,5 +35,5 @@ export function displayRadiusFromAltitudeKm(
   altitudeKm: number,
   earthRadius = EARTH_RADIUS_SCENE,
 ): number {
-  return earthRadius + compressedAltitudeOffset(altitudeKm);
+  return earthRadius + compressedAltitudeOffset(altitudeKm) * DISPLAY_ALTITUDE_SCALE;
 }

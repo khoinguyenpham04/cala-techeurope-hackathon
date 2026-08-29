@@ -5,9 +5,10 @@ import { SatelliteSearch } from "@/components/sky/satellite-search";
 import { SatelliteTelemetry } from "@/components/sky/satellite-telemetry";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import { Switch } from "@/components/ui/switch";
 import type { EnrichmentHalt } from "@/lib/cala";
 import { EUROPEAN_CITIES, type City } from "@/lib/geo/cities";
-import { UNKNOWN_OWNER_COLOR } from "@/lib/orbit/constants";
+import { CELESTRAK_STALE_MESSAGE, UNKNOWN_OWNER_COLOR } from "@/lib/orbit/constants";
 import { headlineCounter, ownerLegend } from "@/lib/orbit/overlay";
 import type {
   CatalogSource,
@@ -33,6 +34,25 @@ function statusLabel(args: {
     return { label: "Live", tone: "bg-emerald-500" };
   }
   return { label: "Offline", tone: "bg-red-500" };
+}
+
+/**
+ * Plain-language Cached reason. CelesTrak 403 → ~2h no-retry → disk snapshot
+ * or bundled seed. Never put this in the globe center.
+ */
+function cacheExplanation(
+  source: CatalogSource | undefined,
+  stale: boolean,
+  catalogError?: string,
+): string | null {
+  if (source === "seed") {
+    return "CelesTrak returned 403. Showing the bundled demo catalog, not the live sky. We wait about 2 hours before asking again.";
+  }
+  if (source === "stale" || stale) {
+    const detail = catalogError?.trim();
+    return detail && detail.length > 0 ? detail : CELESTRAK_STALE_MESSAGE;
+  }
+  return null;
 }
 
 function enrichmentHaltLabel(halt: EnrichmentHalt): string {
@@ -64,14 +84,17 @@ function UtcClock() {
 function HudChrome({
   className,
   children,
+  interactive = true,
 }: {
   className?: string;
   children: React.ReactNode;
+  interactive?: boolean;
 }) {
   return (
     <div
       className={cn(
-        "pointer-events-auto rounded-xl bg-card/80 shadow-lg ring-1 ring-foreground/10 backdrop-blur-md",
+        "rounded-xl bg-card/80 shadow-lg ring-1 ring-foreground/10 backdrop-blur-md",
+        interactive ? "pointer-events-auto" : "pointer-events-none",
         className,
       )}
     >
@@ -95,6 +118,8 @@ export function SkyHud({
   workerError,
   enrichmentHalt,
   showSidebarTrigger,
+  horizonOnly,
+  onHorizonOnlyChange,
 }: {
   city: City;
   onCityChange: (cityId: string) => void;
@@ -110,10 +135,13 @@ export function SkyHud({
   workerError: string | null;
   enrichmentHalt?: EnrichmentHalt | null;
   showSidebarTrigger: boolean;
+  horizonOnly: boolean;
+  onHorizonOnlyChange: (horizonOnly: boolean) => void;
 }) {
   const status = statusLabel({ loading, source, stale, workerError });
   const headline = headlineCounter(visible, overlay);
   const legend = ownerLegend(visible, overlay);
+  const cachedWhy = cacheExplanation(source, stale, catalogError);
 
   return (
     <div className="dark pointer-events-none absolute inset-0 z-10 p-3 sm:p-4">
@@ -142,12 +170,29 @@ export function SkyHud({
               <span className={cn("size-1.5 rounded-full", status.tone)} />
               {status.label}
             </span>
-            {(stale || source === "seed") && (
-              <span className="max-w-[16rem] truncate text-[10px] text-amber-200/90">
-                {catalogError?.trim() || "Using cached catalog; CelesTrak blocked this refresh."}
+            <label className="flex cursor-pointer items-center gap-2 pr-1 text-[11px] text-muted-foreground">
+              <span className={horizonOnly ? "text-muted-foreground" : "text-foreground"}>
+                All orbits
               </span>
-            )}
+              <Switch
+                aria-label={horizonOnly ? "Above city" : "All orbits"}
+                checked={horizonOnly}
+                onCheckedChange={onHorizonOnlyChange}
+                size="sm"
+              />
+              <span className={horizonOnly ? "text-foreground" : "text-muted-foreground"}>
+                Above city
+              </span>
+            </label>
           </HudChrome>
+          {cachedWhy ? (
+            <HudChrome
+              className="max-w-[22rem] px-3 py-2 text-[11px] leading-snug text-amber-100/90"
+              interactive={false}
+            >
+              <p>{cachedWhy}</p>
+            </HudChrome>
+          ) : null}
           {workerError ? (
             <div
               className="pointer-events-auto rounded-lg bg-destructive/20 px-3 py-2 text-destructive text-xs ring-1 ring-destructive/30"
@@ -166,7 +211,7 @@ export function SkyHud({
           ) : null}
         </div>
 
-        <HudChrome className="flex flex-col items-end gap-1 px-3 py-2">
+        <HudChrome className="flex flex-col items-end gap-1 px-3 py-2" interactive={false}>
           <p className="font-mono text-lg leading-none tabular-nums">
             {headline.topCount}
             <span className="text-muted-foreground"> / {headline.total}</span>
@@ -177,8 +222,18 @@ export function SkyHud({
         </HudChrome>
       </div>
 
-      <div className="absolute right-3 bottom-3 left-3 flex items-end justify-between gap-3 sm:right-4 sm:bottom-4 sm:left-4">
+      <div className="absolute inset-x-3 bottom-3 flex items-end justify-between gap-3 sm:inset-x-4 sm:bottom-4">
         <div className="flex min-w-0 max-w-[min(100%,18rem)] flex-col gap-2">
+          {selected ? (
+            <div className="h-[min(36vh,16rem)] sm:hidden">
+              <SatelliteInspector
+                omm={selectedOmm}
+                onClose={() => onSelect(null)}
+                overlay={overlay}
+                satellite={selected}
+              />
+            </div>
+          ) : null}
           {selected ? <SatelliteTelemetry satellite={selected} /> : null}
           <HudChrome className="flex flex-col gap-1.5 px-3 py-2 text-[11px]">
             <p className="text-[10px] font-medium tracking-[0.14em] text-muted-foreground uppercase">
@@ -203,13 +258,15 @@ export function SkyHud({
               <span className="text-muted-foreground">Unknown owner</span>
             </div>
             <p className="text-muted-foreground">
-              {visible.length.toLocaleString("en-US")} above {city.name}
+              {horizonOnly
+                ? `${visible.length.toLocaleString("en-US")} above ${city.name}`
+                : `${visible.length.toLocaleString("en-US")} on globe`}
             </p>
           </HudChrome>
         </div>
 
         {selected ? (
-          <div className="hidden h-[min(62vh,30rem)] sm:block">
+          <div className="pointer-events-none hidden h-[min(62vh,30rem)] w-[18.5rem] shrink-0 sm:block">
             <SatelliteInspector
               omm={selectedOmm}
               onClose={() => onSelect(null)}

@@ -5,12 +5,14 @@ import { ChatComposer } from "@/components/chat/composer";
 import { EffortChip } from "@/components/chat/effort-picker";
 import { ModelChip } from "@/components/chat/model-picker";
 import { Transcript } from "@/components/chat/transcript";
+import { SkyStoryCanvas } from "@/components/sky/sky-story-canvas-lazy";
+import { useSkySelection } from "@/components/sky/sky-context";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { useSkySelection } from "@/components/sky/sky-context";
 import { toDeliveredImages } from "@/lib/attachments";
-import { agentUrlForSession } from "@/lib/cala";
+import { agentUrlForSession, dossierFromMessage } from "@/lib/cala";
 import { cityFromSession } from "@/lib/geo/cities";
 import {
   chatTitle,
@@ -18,12 +20,34 @@ import {
   sessionKindFromId,
   useChatSessions,
 } from "@/lib/sessions";
+import type { StoryObjectIdentity } from "@/lib/sky/story-page";
 import { cn } from "@/lib/utils";
-import { useFlueAgent } from "@flue/react";
+import { useFlueAgent, type FlueConversationMessage } from "@flue/react";
 import { createFlueClient } from "@flue/sdk";
-import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 type ChatStatus = "submitted" | "streaming" | "ready" | "error";
+
+function latestByRole(
+  messages: FlueConversationMessage[],
+  role: FlueConversationMessage["role"],
+): FlueConversationMessage | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message?.role === role) return message;
+  }
+  return undefined;
+}
+
+function textOf(message: FlueConversationMessage | undefined): string | null {
+  if (!message) return null;
+  const text = message.parts
+    .filter((part) => part.type === "text")
+    .map((part) => (part.type === "text" ? part.text : ""))
+    .join("\n")
+    .trim();
+  return text || null;
+}
 
 const statusToChat: Record<string, ChatStatus> = {
   connecting: "submitted",
@@ -80,6 +104,46 @@ export function ChatWorkspace({
   const chatStatus = statusToChat[agent.status] ?? "ready";
   const working = chatStatus === "submitted" || chatStatus === "streaming";
   const pane = compact || density === "pane";
+  const [showLog, setShowLog] = useState(false);
+
+  const objectIdentity = useMemo((): StoryObjectIdentity | null => {
+    if (sky?.satellite) {
+      return { noradId: sky.satellite.noradId, name: sky.satellite.name };
+    }
+    if (session?.noradId) {
+      return {
+        noradId: session.noradId,
+        name: session.satelliteName ?? `NORAD ${session.noradId}`,
+      };
+    }
+    return null;
+  }, [session?.noradId, session?.satelliteName, sky?.satellite?.name, sky?.satellite?.noradId]);
+
+  const dossier = useMemo(() => {
+    for (let index = agent.messages.length - 1; index >= 0; index -= 1) {
+      const found = dossierFromMessage(agent.messages[index]!);
+      if (found) return found;
+    }
+    return null;
+  }, [agent.messages]);
+
+  const { userPrompt, lessonText, lessonStreaming } = useMemo(() => {
+    const user = latestByRole(agent.messages, "user");
+    const assistant = latestByRole(agent.messages, "assistant");
+    return {
+      userPrompt: textOf(user),
+      lessonText: textOf(assistant),
+      lessonStreaming:
+        working ||
+        Boolean(
+          assistant?.parts.some(
+            (part) =>
+              (part.type === "text" || part.type === "reasoning") &&
+              part.state === "streaming",
+          ),
+        ),
+    };
+  }, [agent.messages, working]);
 
   function handleSubmit(message: PromptInputMessage) {
     const text = message.text?.trim() ?? "";
@@ -125,6 +189,17 @@ export function ChatWorkspace({
             NORAD {session.noradId}
           </Badge>
         )}
+        {pane ? (
+          <Button
+            aria-pressed={showLog}
+            className="shrink-0"
+            onClick={() => setShowLog((open) => !open)}
+            size="xs"
+            variant={showLog ? "secondary" : "ghost"}
+          >
+            Log
+          </Button>
+        ) : null}
         <span className="flex items-center gap-1.5 text-xs">
           <span
             className={cn(
@@ -146,17 +221,29 @@ export function ChatWorkspace({
         </div>
       )}
 
-      <Transcript
-        density={pane ? "pane" : "page"}
-        emptyDescription={
-          satellite
-            ? "Answers come only from cited Cala evidence."
-            : "Send a message to begin."
-        }
-        emptyTitle={satellite ? "Ask this satellite" : "Start the conversation"}
-        messages={agent.messages}
-        status={agent.status}
-      />
+      {pane && !showLog ? (
+        <SkyStoryCanvas
+          dossier={dossier}
+          lessonStreaming={lessonStreaming}
+          lessonText={lessonText}
+          noradId={session?.noradId ?? sky?.noradId}
+          overlay={sky?.overlay}
+          satellite={objectIdentity}
+          userPrompt={userPrompt}
+        />
+      ) : (
+        <Transcript
+          density={pane ? "pane" : "page"}
+          emptyDescription={
+            satellite
+              ? "Answers come only from cited Cala evidence."
+              : "Send a message to begin."
+          }
+          emptyTitle={satellite ? "Ask this satellite" : "Start the conversation"}
+          messages={agent.messages}
+          status={agent.status}
+        />
+      )}
 
       <div
         className={cn(
@@ -172,7 +259,7 @@ export function ChatWorkspace({
           textareaProps={{
             disabled: !agent.historyReady,
             placeholder: satellite
-              ? "Ask who owns this satellite..."
+              ? "Ask a lesson about this satellite..."
               : "Message the assistant...",
           }}
           tools={

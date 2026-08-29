@@ -5,9 +5,10 @@ import { Suggestion, Suggestions } from "@/components/ai-elements/suggestion";
 import { ChatComposer } from "@/components/chat/composer";
 import { EffortPicker } from "@/components/chat/effort-picker";
 import { ModelPicker } from "@/components/chat/model-picker";
+import { SkyStoryCanvas } from "@/components/sky/sky-story-canvas-lazy";
+import { useSkySelection } from "@/components/sky/sky-context";
 import { Badge } from "@/components/ui/badge";
 import { toDeliveredImages } from "@/lib/attachments";
-import { useSkySelection } from "@/components/sky/sky-context";
 import {
   agentUrlForSession,
   type SatelliteChatContext,
@@ -136,32 +137,36 @@ export function NewChat({
     <div
       className={cn(
         "flex min-h-0 flex-1 flex-col overflow-hidden",
-        pane ? "px-3 py-3" : "items-center justify-center gap-6 px-6",
+        pane ? undefined : "items-center justify-center gap-6 px-6",
       )}
     >
+      {pane ? (
+        <SkyStoryCanvas
+          noradId={satellite?.noradId ?? sky?.noradId}
+          overlay={sky?.overlay}
+          satellite={
+            satelliteMode && satellite?.noradId
+              ? { noradId: satellite.noradId, name: satellite.name ?? `NORAD ${satellite.noradId}` }
+              : sky?.satellite
+                ? { noradId: sky.satellite.noradId, name: sky.satellite.name }
+                : null
+          }
+        />
+      ) : (
       <div
         className={cn(
           "flex min-h-0 flex-col gap-2",
-          pane
-            ? "flex-1 items-start justify-center text-left"
-            : "items-center text-center",
+          "items-center text-center",
         )}
       >
-        {!pane && (
-          <div className="flex size-12 items-center justify-center rounded-xl border bg-muted">
-            {satelliteMode ? (
-              <OrbitIcon className="size-6 text-primary" />
-            ) : (
-              <SparklesIcon className="size-6 text-primary" />
-            )}
-          </div>
-        )}
-        <h1
-          className={cn(
-            "font-semibold tracking-tight",
-            pane ? "text-base" : "text-2xl",
+        <div className="flex size-12 items-center justify-center rounded-xl border bg-muted">
+          {satelliteMode ? (
+            <OrbitIcon className="size-6 text-primary" />
+          ) : (
+            <SparklesIcon className="size-6 text-primary" />
           )}
-        >
+        </div>
+        <h1 className="font-semibold text-2xl tracking-tight">
           {waitingForSelection
             ? "Select a satellite"
             : satelliteMode
@@ -191,10 +196,11 @@ export function NewChat({
               : "Ask anything. Conversations are saved in the sidebar and replay when you come back."}
         </p>
       </div>
+      )}
       <div
         className={cn(
           "flex w-full shrink-0 flex-col gap-3",
-          pane ? "max-w-none pt-3" : "max-w-2xl",
+          pane ? "border-t px-3 py-3" : "max-w-2xl",
         )}
       >
         <ChatComposer
@@ -203,7 +209,7 @@ export function NewChat({
           textareaProps={{
             autoFocus: !pane,
             placeholder: satelliteMode
-              ? "Ask who owns this satellite..."
+              ? "Ask a lesson about this satellite..."
               : waitingForSelection
                 ? "Message the assistant, or select a satellite..."
                 : "Ask anything...",

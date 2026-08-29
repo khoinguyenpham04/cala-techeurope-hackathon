@@ -1,17 +1,21 @@
-import { EARTH_RADIUS_SCENE } from "@/lib/orbit/constants";
+import { EARTH_RADIUS_KM, EARTH_RADIUS_SCENE } from "@/lib/orbit/constants";
 import { geodeticToScene, satelliteScenePosition } from "@/lib/orbit/coordinates";
 import { isAboveHorizon } from "@/lib/orbit/horizon";
 import { parseOmmRecord } from "@/lib/orbit/omm";
-import { ORBIT_SEGMENTS, sampleOrbitScenePoints } from "@/lib/orbit/orbit-path";
+import { ORBIT_SEGMENTS, sampleOrbitEcefKm, sampleOrbitScenePoints } from "@/lib/orbit/orbit-path";
 import { prepareSatrec, propagateVisible } from "@/lib/orbit/propagate";
 import {
   lerp,
   lerpLongitudeDeg,
+  lerpSampleGeodetic,
   lerpSampleScene,
   resetOrbitSamples,
   rotateOrbitSamples,
   sampleAlpha,
+  VISIBLE_ALT,
   VISIBLE_FLOAT_STRIDE,
+  VISIBLE_LAT,
+  VISIBLE_LON,
   VISIBLE_X,
   VISIBLE_Y,
   VISIBLE_Z,
@@ -104,6 +108,51 @@ export function verifyOrbitFixtures(): void {
     "ISS path closes on itself (frozen GMST, not a ground-track scribble)",
   );
 
+  const issEcef = sampleOrbitEcefKm(VALID_OMM, FIXTURE_CLOCK.getTime());
+  assert(issEcef.length >= ORBIT_SEGMENTS, "ISS ECEF path keeps 128+ samples after dropping invalids");
+  const ecefFirst = issEcef[0]!;
+  const ecefLast = issEcef[issEcef.length - 1]!;
+  assert(
+    Math.hypot(ecefFirst.x - ecefLast.x, ecefFirst.y - ecefLast.y, ecefFirst.z - ecefLast.z) < 1e-6,
+    "ISS ECEF path closes in Cartesian space (first == last), not via lon wrap",
+  );
+  let maxChordKm = 0;
+  let minRadiusKm = Infinity;
+  for (let i = 0; i < issEcef.length; i += 1) {
+    const p = issEcef[i]!;
+    minRadiusKm = Math.min(minRadiusKm, Math.hypot(p.x, p.y, p.z));
+    if (i === 0) continue;
+    const prev = issEcef[i - 1]!;
+    maxChordKm = Math.max(maxChordKm, Math.hypot(p.x - prev.x, p.y - prev.y, p.z - prev.z));
+  }
+  assert(minRadiusKm > EARTH_RADIUS_KM, "ISS ECEF vertices stay above the ellipsoid (altitude not clamped)");
+  assert(maxChordKm < 2500, "ISS ECEF has no 180° / antimeridian jump between samples");
+
+  const sentinelOmm: SlimOmm = {
+    ...VALID_OMM,
+    OBJECT_NAME: "SENTINEL-5P",
+    OBJECT_ID: "2017-064A",
+    INCLINATION: 98.7,
+    MEAN_MOTION: 14.3,
+    RA_OF_ASC_NODE: 250.0,
+    NORAD_CAT_ID: 42969,
+  };
+  const s5pEcef = sampleOrbitEcefKm(sentinelOmm, FIXTURE_CLOCK.getTime());
+  assert(s5pEcef.length >= ORBIT_SEGMENTS, "Sentinel-5P ECEF path is a dense closed polyline");
+  const s5pFirst = s5pEcef[0]!;
+  const s5pLast = s5pEcef[s5pEcef.length - 1]!;
+  assert(
+    Math.hypot(s5pFirst.x - s5pLast.x, s5pFirst.y - s5pLast.y, s5pFirst.z - s5pLast.z) < 1e-6,
+    "Sentinel-5P ECEF path closes in Cartesian space",
+  );
+  let s5pMaxChordKm = 0;
+  for (let i = 1; i < s5pEcef.length; i += 1) {
+    const p = s5pEcef[i]!;
+    const prev = s5pEcef[i - 1]!;
+    s5pMaxChordKm = Math.max(s5pMaxChordKm, Math.hypot(p.x - prev.x, p.y - prev.y, p.z - prev.z));
+  }
+  assert(s5pMaxChordKm < 2500, "Sentinel-5P ECEF has no 180° jump (SSO still a continuous ellipse)");
+
   assert(approxEqual(lerp(0, 10, 0), 0), "lerp at t=0 is the start sample");
   assert(approxEqual(lerp(0, 10, 1), 10), "lerp at t=1 is the end sample");
   assert(approxEqual(lerp(0, 10, 0.5), 5), "lerp at t=0.5 is the midpoint");
@@ -141,6 +190,18 @@ export function verifyOrbitFixtures(): void {
   lerpSampleScene(mid, pair, 0, 0);
   assert(approxEqual(mid.x, 0) && approxEqual(mid.y, 0) && approxEqual(mid.z, 0), "t=0 is the previous sample");
 
+  pair.prev.floats[VISIBLE_LAT] = 10;
+  pair.prev.floats[VISIBLE_LON] = 170;
+  pair.prev.floats[VISIBLE_ALT] = 400;
+  pair.curr.floats[VISIBLE_LAT] = 20;
+  pair.curr.floats[VISIBLE_LON] = -170;
+  pair.curr.floats[VISIBLE_ALT] = 500;
+  const geo = { latitudeDeg: 0, longitudeDeg: 0, altitudeKm: 0 };
+  lerpSampleGeodetic(geo, pair, 0, 0.5);
+  assert(approxEqual(geo.latitudeDeg, 15), "geodetic lerp mid latitude");
+  assert(approxEqual(geo.longitudeDeg, 180), "geodetic lerp takes the antimeridian short path");
+  assert(approxEqual(geo.altitudeKm, 450), "geodetic lerp mid altitude");
+
   const appearing = rotateOrbitSamples({
     epochMs: 3,
     count: 1,
@@ -176,6 +237,19 @@ export function verifyOrbitFixtures(): void {
   assert(
     Math.hypot(issPath[0]![0] - issNow.x, issPath[0]![1] - issNow.y, issPath[0]![2] - issNow.z) < 1e-6,
     "ISS current ECEF position sits on the orbit polyline",
+  );
+  const issFoot = geodeticToScene(
+    unfiltered[0]!.latitudeDeg,
+    unfiltered[0]!.longitudeDeg,
+    EARTH_RADIUS_SCENE,
+  );
+  const issLen = Math.hypot(issNow.x, issNow.y, issNow.z);
+  assert(approxEqual(Math.hypot(issFoot.x, issFoot.y, issFoot.z), EARTH_RADIUS_SCENE), "nadir foot sits on the Earth sphere");
+  assert(
+    approxEqual(issNow.x / issLen, issFoot.x / EARTH_RADIUS_SCENE, 1e-9) &&
+      approxEqual(issNow.y / issLen, issFoot.y / EARTH_RADIUS_SCENE, 1e-9) &&
+      approxEqual(issNow.z / issLen, issFoot.z / EARTH_RADIUS_SCENE, 1e-9),
+    "nadir is the geodetic radial from the satellite to the surface",
   );
   const filtered = propagateVisible([prepared], FIXTURE_CLOCK, barcelona, { horizonOnly: true });
   assert(

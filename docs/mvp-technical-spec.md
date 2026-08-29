@@ -14,7 +14,7 @@ Next /api/orbits  (2h cache, last-good on failure)
 Browser SGP4 worker (1 Hz, elevation > 0°)
         │
         ▼
-Three.js instanced globe ──► selected NORAD
+COBE globe (lat/lon markers) ──► selected NORAD
         │                         │
         │                         ▼
         │              POST /api/satellites/enrich
@@ -112,6 +112,7 @@ See the root [README](../README.md). Defaults: web `http://localhost:3000`, agen
 - CelesTrak may return **403** from some networks or after policy blocks; without a prior snapshot the globe stays empty.
 - Without `CALA_API_KEY`, enrich returns `unconfigured`; chat cannot cite ownership.
 - Display altitude is compressed; inspector altitude is the real value.
+- The globe is [COBE](https://cobe.vercel.app): lat/lon markers (far side fades), not true 3D orbits. Marker count is capped so the canvas stays light; the HUD still counts every visible payload.
 - Orbit worker is 1 Hz; horizon membership changes as objects rise and set.
 - Satellite agent is pinned to one NORAD ID per conversation.
 - General assistant may use Tavily `web_search`; satellite agent must not.

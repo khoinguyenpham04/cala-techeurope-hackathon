@@ -1,0 +1,62 @@
+.sky-cobe {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #05070c;
+}
+
+.sky-cobe canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: none;
+}
+
+.sky-cobe canvas:active {
+  cursor: grabbing;
+}
+
+.sky-cobe-hit,
+.sky-cobe-label {
+  display: none;
+}
+
+@supports (anchor-name: --cobe-city) {
+  .sky-cobe-hit {
+    display: block;
+    position: absolute;
+    z-index: 2;
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    appearance: none;
+    translate: -50% -50%;
+    cursor: pointer;
+    left: anchor(center);
+    top: anchor(center);
+  }
+
+  .sky-cobe-label {
+    display: block;
+    position: absolute;
+    z-index: 3;
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    background: rgb(5 7 12 / 0.82);
+    color: #e2e8f0;
+    font-size: 0.7rem;
+    line-height: 1.2;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+    pointer-events: none;
+    left: anchor(center);
+    bottom: anchor(top);
+    translate: -50% 0;
+    margin-bottom: 8px;
+  }
+}
