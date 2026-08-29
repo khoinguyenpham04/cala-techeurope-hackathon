@@ -79,6 +79,10 @@ import {
 // ============================================================================
 
 const convertBlobUrlToDataUrl = async (url: string): Promise<string | null> => {
+  if (!URL.canParse(url) || new URL(url).protocol !== "blob:") {
+    return null;
+  }
+
   try {
     const response = await fetch(url);
     const blob = await response.blob();
