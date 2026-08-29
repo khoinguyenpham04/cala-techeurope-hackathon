@@ -1,12 +1,16 @@
 import { PROPAGATE_HZ } from "../lib/orbit/constants";
-import { prepareSatrec, propagateVisible, type PreparedSat } from "../lib/orbit/propagate";
+import { prepareSatrec, propagateVisibleInto, type PreparedSat } from "../lib/orbit/propagate";
+import { createVisibleBuffers, VISIBLE_FLOAT_STRIDE } from "../lib/orbit/sample-buffer";
 import type { ObserverLocation, OrbitWorkerIn, OrbitWorkerOut, SlimOmm } from "../lib/orbit/types";
 
+/** satrec from json2satrec, built once per catalog ingest — never per tick. */
 let catalog: PreparedSat[] = [];
 let observer: ObserverLocation | null = null;
 /** null means wall clock; a number pins propagation to a fixed epoch (fixtures). */
 let epochMs: number | null = null;
+let horizonOnly = true;
 let timer: ReturnType<typeof setInterval> | null = null;
+const tickBuffers = createVisibleBuffers();
 
 function emit(message: OrbitWorkerOut) {
   self.postMessage(message);
@@ -16,8 +20,16 @@ function tick() {
   if (!observer || catalog.length === 0) return;
   const date = new Date(epochMs ?? Date.now());
   try {
-    const satellites = propagateVisible(catalog, date, observer);
-    emit({ type: "visible", epochMs: date.getTime(), satellites });
+    const count = propagateVisibleInto(catalog, date, observer, { horizonOnly }, tickBuffers);
+    emit({
+      type: "visible",
+      epochMs: date.getTime(),
+      count,
+      floats: tickBuffers.floats.subarray(0, count * VISIBLE_FLOAT_STRIDE),
+      noradIds: tickBuffers.noradIds.subarray(0, count),
+      names: tickBuffers.names,
+      objectIds: tickBuffers.objectIds,
+    });
   } catch (cause) {
     emit({
       type: "error",
@@ -56,6 +68,10 @@ self.onmessage = (event: MessageEvent<OrbitWorkerIn>) => {
       break;
     case "clock":
       epochMs = message.epochMs;
+      tick();
+      break;
+    case "filter":
+      horizonOnly = message.horizonOnly;
       tick();
       break;
     default:

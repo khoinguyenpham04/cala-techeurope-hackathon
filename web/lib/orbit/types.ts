@@ -19,7 +19,7 @@ export interface SlimOmm {
   MEAN_MOTION_DDOT: number;
 }
 
-export type CatalogSource = "live" | "cache" | "stale";
+export type CatalogSource = "live" | "cache" | "stale" | "seed";
 
 export interface OrbitCatalogResponse {
   records: SlimOmm[];
@@ -55,6 +55,10 @@ export interface VisibleSatellite {
   elevationDeg: number;
   azimuthDeg: number;
   rangeKm: number;
+  /** ECI velocity from satellite.js (km/s), when the propagator returned one. */
+  velocity?: { x: number; y: number; z: number };
+  /** ECI speed magnitude from satellite.js velocity, km/s. */
+  speedKmS: number;
   /**
    * Scene-space radius from Earth's center after compressed altitude mapping.
    * Earth surface is `EARTH_RADIUS_SCENE`.
@@ -77,6 +81,8 @@ export interface SatelliteOverlay {
   operator?: string | null;
   purpose?: string | null;
   evidenceState?: EvidenceState;
+  /** Catalog seed paint — not Cala evidence. */
+  seeded?: boolean;
   sources?: Array<{
     name: string;
     url: string;
@@ -89,12 +95,18 @@ export type SatelliteOverlayMap = Record<string, SatelliteOverlay>;
 export type OrbitWorkerIn =
   | { type: "catalog"; records: SlimOmm[] }
   | { type: "observer"; observer: ObserverLocation }
-  | { type: "clock"; epochMs: number | null };
+  | { type: "clock"; epochMs: number | null }
+  | { type: "filter"; horizonOnly: boolean };
 
 export type OrbitWorkerOut =
   | {
       type: "visible";
       epochMs: number;
-      satellites: VisibleSatellite[];
+      count: number;
+      /** Packed `VISIBLE_FLOAT_STRIDE` floats per visible sat (see sample-buffer). */
+      floats: Float32Array;
+      noradIds: Uint32Array;
+      names: string[];
+      objectIds: string[];
     }
   | { type: "error"; message: string };

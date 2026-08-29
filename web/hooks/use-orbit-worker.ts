@@ -1,5 +1,10 @@
 "use client";
 
+import {
+  decodeVisibleSatellites,
+  resetOrbitSamples,
+  rotateOrbitSamples,
+} from "@/lib/orbit/sample-buffer";
 import type { ObserverLocation, OrbitWorkerIn, OrbitWorkerOut, SlimOmm, VisibleSatellite } from "@/lib/orbit/types";
 import { startTransition, useEffect, useRef, useState } from "react";
 
@@ -20,8 +25,21 @@ export function useOrbitWorker(
     worker.onmessage = (event: MessageEvent<OrbitWorkerOut>) => {
       const message = event.data;
       if (message.type === "visible") {
+        rotateOrbitSamples({
+          epochMs: message.epochMs,
+          count: message.count,
+          floats: message.floats,
+          noradIds: message.noradIds,
+        });
+        const satellites = decodeVisibleSatellites(
+          message.count,
+          message.floats,
+          message.noradIds,
+          message.names,
+          message.objectIds,
+        );
         startTransition(() => {
-          setVisible(message.satellites);
+          setVisible(satellites);
           setEpochMs(message.epochMs);
           setError(null);
         });
@@ -35,6 +53,7 @@ export function useOrbitWorker(
     return () => {
       worker.terminate();
       workerRef.current = null;
+      resetOrbitSamples();
     };
   }, []);
 

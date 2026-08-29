@@ -1,6 +1,21 @@
-import { geodeticToScene } from "@/lib/orbit/coordinates";
+import { EARTH_RADIUS_SCENE } from "@/lib/orbit/constants";
+import { geodeticToScene, satelliteScenePosition } from "@/lib/orbit/coordinates";
 import { isAboveHorizon } from "@/lib/orbit/horizon";
 import { parseOmmRecord } from "@/lib/orbit/omm";
+import { ORBIT_SEGMENTS, sampleOrbitScenePoints } from "@/lib/orbit/orbit-path";
+import { prepareSatrec, propagateVisible } from "@/lib/orbit/propagate";
+import {
+  lerp,
+  lerpLongitudeDeg,
+  lerpSampleScene,
+  resetOrbitSamples,
+  rotateOrbitSamples,
+  sampleAlpha,
+  VISIBLE_FLOAT_STRIDE,
+  VISIBLE_X,
+  VISIBLE_Y,
+  VISIBLE_Z,
+} from "@/lib/orbit/sample-buffer";
 import { compressedAltitudeOffset } from "@/lib/orbit/scale";
 import type { SlimOmm } from "@/lib/orbit/types";
 
@@ -35,7 +50,7 @@ function approxEqual(actual: number, expected: number, epsilon = 1e-9): boolean 
   return Math.abs(actual - expected) <= epsilon;
 }
 
-function assert(condition: boolean, message: string) {
+function assert(condition: boolean, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
 
@@ -74,4 +89,97 @@ export function verifyOrbitFixtures(): void {
   assert(approxEqual(compressedAltitudeOffset(2000), 0.32), "LEO band end");
   assert(compressedAltitudeOffset(35786) > compressedAltitudeOffset(20000), "GEO sits above MEO visually");
   assert(compressedAltitudeOffset(35786) < 0.6, "GEO stays inside the compressed envelope");
+
+  const issPath = sampleOrbitScenePoints(VALID_OMM, FIXTURE_CLOCK.getTime());
+  assert(issPath.length === ORBIT_SEGMENTS + 1, "ISS path is one closed polyline (N segments + wrap)");
+  const radii = issPath.map((p) => Math.hypot(p[0], p[1], p[2]));
+  const minR = Math.min(...radii);
+  const maxR = Math.max(...radii);
+  assert(minR > EARTH_RADIUS_SCENE, "ISS ellipse stays above the Earth surface");
+  assert(maxR - minR < 0.08, "ISS is near-circular LEO after compressed altitude mapping");
+  const first = issPath[0]!;
+  const last = issPath[issPath.length - 1]!;
+  assert(
+    Math.hypot(first[0] - last[0], first[1] - last[1], first[2] - last[2]) < 0.04,
+    "ISS path closes on itself (frozen GMST, not a ground-track scribble)",
+  );
+
+  assert(approxEqual(lerp(0, 10, 0), 0), "lerp at t=0 is the start sample");
+  assert(approxEqual(lerp(0, 10, 1), 10), "lerp at t=1 is the end sample");
+  assert(approxEqual(lerp(0, 10, 0.5), 5), "lerp at t=0.5 is the midpoint");
+  assert(approxEqual(lerpLongitudeDeg(170, -170, 0.5), 180), "longitude lerp takes the antimeridian short path");
+  assert(sampleAlpha(0, 1000) === 0, "sample alpha starts at 0 when the 1 Hz tick just arrived");
+  assert(sampleAlpha(1000, 1000) === 1, "sample alpha reaches 1 at the next SGP4 period");
+  assert(sampleAlpha(2500, 1000) === 1, "sample alpha holds at 1 if the next tick is late");
+
+  const prevFloats = new Float32Array(VISIBLE_FLOAT_STRIDE);
+  const currFloats = new Float32Array(VISIBLE_FLOAT_STRIDE);
+  prevFloats[VISIBLE_X] = 0;
+  prevFloats[VISIBLE_Y] = 0;
+  prevFloats[VISIBLE_Z] = 0;
+  currFloats[VISIBLE_X] = 10;
+  currFloats[VISIBLE_Y] = 4;
+  currFloats[VISIBLE_Z] = -2;
+  resetOrbitSamples();
+  rotateOrbitSamples({
+    epochMs: 1,
+    count: 1,
+    floats: prevFloats,
+    noradIds: new Uint32Array([25544]),
+    arrivedAtMs: 0,
+  });
+  const pair = rotateOrbitSamples({
+    epochMs: 2,
+    count: 1,
+    floats: currFloats,
+    noradIds: new Uint32Array([25544]),
+    arrivedAtMs: 1000,
+  });
+  const mid = { x: 0, y: 0, z: 0 };
+  lerpSampleScene(mid, pair, 0, 0.5);
+  assert(approxEqual(mid.x, 5) && approxEqual(mid.y, 2) && approxEqual(mid.z, -1), "matched sats lerp scene xyz between 1 Hz samples");
+  lerpSampleScene(mid, pair, 0, 0);
+  assert(approxEqual(mid.x, 0) && approxEqual(mid.y, 0) && approxEqual(mid.z, 0), "t=0 is the previous sample");
+
+  const appearing = rotateOrbitSamples({
+    epochMs: 3,
+    count: 1,
+    floats: currFloats,
+    noradIds: new Uint32Array([99999]),
+    arrivedAtMs: 2000,
+  });
+  lerpSampleScene(mid, appearing, 0, 0);
+  assert(
+    approxEqual(mid.x, 10) && approxEqual(mid.y, 4) && approxEqual(mid.z, -2),
+    "a newly visible sat snaps to the current sample, not the origin",
+  );
+  resetOrbitSamples();
+
+  const barcelona = { latitudeDeg: 41.3874, longitudeDeg: 2.1686, heightKm: 0.012 };
+  const prepared = prepareSatrec(VALID_OMM);
+  assert(prepared !== null, "valid ISS OMM must json2satrec once and reuse");
+  if (!prepared) return;
+  const reused = prepareSatrec(VALID_OMM);
+  assert(reused !== null && reused.satrec !== prepared.satrec, "each prepareSatrec builds a satrec; the worker caches the result, not this helper");
+  assert(prepareSatrec({ ...VALID_OMM, ECCENTRICITY: 1.5 }) === null, "invalid OMM is skipped at satrec prepare");
+
+  const unfiltered = propagateVisible([prepared], FIXTURE_CLOCK, barcelona, { horizonOnly: false });
+  assert(unfiltered.length === 1, "fixed-clock ISS must propagate without a horizon filter");
+  assert(unfiltered[0]!.latitudeDeg !== undefined && unfiltered[0]!.longitudeDeg !== undefined, "VisibleSatellite exposes lat/lon");
+  assert(unfiltered[0]!.altitudeKm > 0, "VisibleSatellite exposes altitude");
+  assert(unfiltered[0]!.velocity !== undefined, "VisibleSatellite exposes ECI velocity when present");
+  const issNow = satelliteScenePosition(
+    unfiltered[0]!.latitudeDeg,
+    unfiltered[0]!.longitudeDeg,
+    unfiltered[0]!.altitudeKm,
+  );
+  assert(
+    Math.hypot(issPath[0]![0] - issNow.x, issPath[0]![1] - issNow.y, issPath[0]![2] - issNow.z) < 1e-6,
+    "ISS current ECEF position sits on the orbit polyline",
+  );
+  const filtered = propagateVisible([prepared], FIXTURE_CLOCK, barcelona, { horizonOnly: true });
+  assert(
+    filtered.length === (isAboveHorizon(unfiltered[0]!.elevationDeg) ? 1 : 0),
+    "horizon filter is applied at propagate time, not later on rAF",
+  );
 }
