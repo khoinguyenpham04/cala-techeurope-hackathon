@@ -68,6 +68,21 @@ export const COBE_CITY_MARKER_SIZE = 0.055;
 export const COBE_SAT_MARKER_SIZE = 0.01;
 export const COBE_SAT_SELECTED_MARKER_SIZE = 0.014;
 
+/**
+ * Lift every COBE marker off the surface so LEO reads as a halo, not pins
+ * on the crust. One global value — COBE has no per-marker altitude.
+ */
+export const COBE_MARKER_ELEVATION = 0.16;
+
+/**
+ * Bezier peak for orbit-ring chords. Keep modest: high values on long hops
+ * make flower-petal cusps. Short ~7.5° stations + this height ≈ a halo ring.
+ */
+export const COBE_ORBIT_ARC_HEIGHT = 0.1;
+export const COBE_ORBIT_ARC_WIDTH = 0.7;
+/** Stations around one revolution (SGP4 off the rAF thread). */
+export const COBE_ORBIT_STATIONS = 48;
+
 /** Short backoff after a network/timeout failure so we do not hammer the endpoint. */
 export const CELESTRAK_TRANSIENT_BACKOFF_MS = 60_000;
 

@@ -19,7 +19,7 @@ import {
   useChatSessions,
 } from "@/lib/sessions";
 import {
-  questionCardsFromTurns,
+  storyCardsFromTurns,
   type StoryObjectIdentity,
 } from "@/lib/sky/story-page";
 import { cn } from "@/lib/utils";
@@ -128,7 +128,7 @@ export function ChatWorkspace({
     return null;
   }, [agent.messages]);
 
-  const { userPrompt, extraTexts, questionCards, lessonStreaming } = useMemo(() => {
+  const { userPrompt, extraTexts, storyCards, lessonStreaming } = useMemo(() => {
     const user = latestByRole(agent.messages, "user");
     const assistant = latestByRole(agent.messages, "assistant");
     const turns = agent.messages.flatMap((message) => {
@@ -146,15 +146,32 @@ export function ChatWorkspace({
             part.state === "streaming",
         ),
       );
+    const hasToolCall = Boolean(
+      assistant?.parts.some((part) => part.type === "dynamic-tool"),
+    );
     return {
       userPrompt: textOf(user),
       extraTexts: agent.messages
         .filter((message) => message.role === "assistant")
         .map((message) => textOf(message)),
-      questionCards: questionCardsFromTurns({ turns, streaming }),
+      storyCards: storyCardsFromTurns({
+        turns,
+        status: chatStatus,
+        streaming,
+        hasToolCall,
+      }),
       lessonStreaming: streaming,
     };
-  }, [agent.messages, working]);
+  }, [agent.messages, chatStatus, working]);
+
+  const handleAsk = useCallback(
+    (question: string) => {
+      const text = question.trim();
+      if (!text || working || !agent.historyReady) return;
+      void agent.sendMessage(text);
+    },
+    [agent, working],
+  );
 
   function handleSubmit(message: PromptInputMessage) {
     const text = message.text?.trim() ?? "";
@@ -239,8 +256,9 @@ export function ChatWorkspace({
           lessonStreaming={lessonStreaming}
           noradId={session?.noradId ?? sky?.noradId}
           overlay={sky?.overlay}
-          questionCards={questionCards}
+          onAsk={handleAsk}
           satellite={objectIdentity}
+          storyCards={storyCards}
           userPrompt={userPrompt}
         />
       ) : (

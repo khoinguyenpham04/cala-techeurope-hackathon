@@ -99,16 +99,18 @@ export function sampleOrbitEcefKm(omm: SlimOmm, epochMs: number = Date.now()): E
 export function sampleOrbitGeodeticPoints(
   omm: SlimOmm,
   epochMs: number = Date.now(),
+  segments: number = ORBIT_SEGMENTS,
 ): OrbitGeodeticPoint[] {
   const prepared = prepareSatrec(omm);
   if (!prepared) return [];
 
+  const count = Math.max(8, Math.floor(segments));
   const periodMs = periodMsFor(omm);
   const gmst = gstime(new Date(epochMs));
   const points: OrbitGeodeticPoint[] = [];
 
-  for (let i = 0; i <= ORBIT_SEGMENTS; i += 1) {
-    const date = new Date(epochMs + (i / ORBIT_SEGMENTS) * periodMs);
+  for (let i = 0; i <= count; i += 1) {
+    const date = new Date(epochMs + (i / count) * periodMs);
     const pv = propagate(prepared.satrec, date);
     if (!pv?.position) continue;
     const geo = eciToGeodetic(pv.position, gmst);
@@ -122,6 +124,26 @@ export function sampleOrbitGeodeticPoints(
   }
 
   return points.length >= 2 ? points : [];
+}
+
+/** Closed [lat, lon] ring for COBE arcs. Sample off the render thread. */
+export function sampleOrbitCobeStations(
+  omm: SlimOmm,
+  epochMs: number = Date.now(),
+  stations: number = 48,
+): Array<[number, number]> {
+  const points = sampleOrbitGeodeticPoints(omm, epochMs, stations);
+  if (points.length < 2) return [];
+  const ring: Array<[number, number]> = points.map((point) => [
+    point.latitudeDeg,
+    point.longitudeDeg,
+  ]);
+  const first = ring[0]!;
+  const last = ring[ring.length - 1]!;
+  if (first[0] !== last[0] || first[1] !== last[1]) {
+    ring.push([first[0], first[1]]);
+  }
+  return ring;
 }
 
 /** Three.js scene-space polyline (fixtures / leftover R3F helpers). */

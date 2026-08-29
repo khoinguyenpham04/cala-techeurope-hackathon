@@ -5,21 +5,26 @@ import "@/components/sky/cobe-globe.css";
 import { SatelliteIcon } from "@/components/sky/satellite-icon";
 import {
   CITY_MARKER_ID,
-  LOOK_ARC_ID,
+  ORBIT_ARC_ID,
   cobeArcStyle,
   cobeMarkerStyle,
+  densifyOrbitStations,
   lerpAngle,
   locationToAngles,
-  lookArcStations,
   markerIdForNorad,
 } from "@/lib/orbit/cobe-view";
 import {
   COBE_CITY_MARKER_SIZE,
   COBE_HIT_TARGET_MAX,
+  COBE_MARKER_ELEVATION,
   COBE_MAX_MARKERS,
+  COBE_ORBIT_ARC_HEIGHT,
+  COBE_ORBIT_ARC_WIDTH,
+  COBE_ORBIT_STATIONS,
   COBE_SAT_MARKER_SIZE,
   COBE_SAT_SELECTED_MARKER_SIZE,
 } from "@/lib/orbit/constants";
+import { ORBIT_REFRESH_MS, sampleOrbitCobeStations } from "@/lib/orbit/orbit-path";
 import { cssColorToRgb } from "@/lib/orbit/css-color";
 import { overlayFor, resolveDotColor } from "@/lib/orbit/overlay";
 import {
@@ -29,7 +34,7 @@ import {
   type GeodeticScratch,
 } from "@/lib/orbit/sample-buffer";
 import type { City } from "@/lib/geo/cities";
-import type { SatelliteOverlayMap, VisibleSatellite } from "@/lib/orbit/types";
+import type { SatelliteOverlayMap, SlimOmm, VisibleSatellite } from "@/lib/orbit/types";
 import createGlobe, { type Arc, type COBEOptions, type Marker } from "cobe";
 import { useTheme } from "next-themes";
 import { useEffect, useMemo, useRef } from "react";
@@ -84,12 +89,14 @@ export function GlobeScene({
   visible,
   overlay,
   selectedNoradId,
+  selectedOmm,
   onSelect,
 }: {
   city: City;
   visible: VisibleSatellite[];
   overlay: SatelliteOverlayMap;
   selectedNoradId: string | null;
+  selectedOmm?: SlimOmm | null;
   onSelect: (noradId: string | null) => void;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -102,6 +109,7 @@ export function GlobeScene({
   const focusRef = useRef(locationToAngles(city.latitudeDeg, city.longitudeDeg));
   const { resolvedTheme } = useTheme();
   const lookRef = useRef(lookForTheme(resolvedTheme));
+  const orbitStationsRef = useRef<Array<[number, number]>>([]);
   cityRef.current = city;
   overlayRef.current = overlay;
   visibleRef.current = visible;
@@ -152,6 +160,22 @@ export function GlobeScene({
   }, [selectedNoradId]);
 
   useEffect(() => {
+    if (!selectedOmm) {
+      orbitStationsRef.current = [];
+      return;
+    }
+    const omm = selectedOmm;
+    const sample = () => {
+      orbitStationsRef.current = densifyOrbitStations(
+        sampleOrbitCobeStations(omm, Date.now(), COBE_ORBIT_STATIONS),
+      );
+    };
+    sample();
+    const timer = window.setInterval(sample, ORBIT_REFRESH_MS);
+    return () => window.clearInterval(timer);
+  }, [selectedOmm]);
+
+  useEffect(() => {
     const wrap = wrapRef.current;
     const canvas = canvasRef.current;
     if (!wrap || !canvas) return;
@@ -189,9 +213,9 @@ export function GlobeScene({
       markers: [],
       arcs: [],
       arcColor: ARC_RGB,
-      arcWidth: 0.5,
-      arcHeight: 0.62,
-      markerElevation: 0.02,
+      arcWidth: COBE_ORBIT_ARC_WIDTH,
+      arcHeight: COBE_ORBIT_ARC_HEIGHT,
+      markerElevation: COBE_MARKER_ELEVATION,
       scale,
       opacity: 1,
       offset: [0, 0],
@@ -247,16 +271,11 @@ export function GlobeScene({
         }
       }
 
-      if (selectedLocation) {
-        const stations = lookArcStations(
-          cityNow.latitudeDeg,
-          cityNow.longitudeDeg,
-          selectedLocation[0],
-          selectedLocation[1],
-        );
+      const stations = orbitStationsRef.current;
+      if (selectedLocation && stations.length >= 2) {
         for (let index = 0; index < stations.length - 1; index += 1) {
           arcs.push({
-            id: index === 0 ? LOOK_ARC_ID : undefined,
+            id: index === 0 ? ORBIT_ARC_ID : undefined,
             from: stations[index]!,
             to: stations[index + 1]!,
             color: SELECTED_RGB,
@@ -283,6 +302,9 @@ export function GlobeScene({
         scale,
         markers,
         arcs,
+        arcHeight: COBE_ORBIT_ARC_HEIGHT,
+        arcWidth: COBE_ORBIT_ARC_WIDTH,
+        markerElevation: COBE_MARKER_ELEVATION,
         ...lookRef.current,
       });
       raf = window.requestAnimationFrame(tick);
@@ -355,8 +377,8 @@ export function GlobeScene({
         </div>
       ) : null}
       {selected ? (
-        <div className="sky-cobe-label" style={cobeArcStyle(LOOK_ARC_ID)}>
-          {city.name} → {selected.name}
+        <div className="sky-cobe-label" style={cobeArcStyle(ORBIT_ARC_ID)}>
+          {selected.name} orbit
         </div>
       ) : null}
       {hits.map((hit) => (

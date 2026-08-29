@@ -1,18 +1,10 @@
 import type { CSSProperties } from "react";
 
 export const CITY_MARKER_ID = "city";
-export const LOOK_ARC_ID = "look";
+export const ORBIT_ARC_ID = "orbit";
 
 const DEG = Math.PI / 180;
 const RAD = 180 / Math.PI;
-
-/**
- * COBE draws a quadratic Bezier on the short (from+to) chord. Nearby city/sat
- * pairs therefore collapse to a local hop. Station the long-way great circle
- * every ~72° so each Bezier stays well-defined and the chain wraps the globe.
- */
-const LOOK_WRAP_STEP_RAD = 72 * DEG;
-const LOOK_WRAP_MIN_SEGMENTS = 2;
 const COLINEAR_EPS = 1e-6;
 
 type Vec3 = [number, number, number];
@@ -66,28 +58,30 @@ function rotateAround(vec: Vec3, axis: Vec3, angle: number): Vec3 {
 }
 
 /**
- * Lat/lon stations for a long-way great-circle wrap (city → far side → sat).
- * COBE only ever draws the short chord, so the look path is a chain of these.
+ * Insert 3D midpoints so no COBE chord is longer than `maxStepDeg`.
+ * Stops dateline hops from becoming a long-way Bezier across the globe.
  */
-export function lookArcStations(
-  fromLatDeg: number,
-  fromLonDeg: number,
-  toLatDeg: number,
-  toLonDeg: number,
+export function densifyOrbitStations(
+  stations: Array<[number, number]>,
+  maxStepDeg = 12,
 ): Array<[number, number]> {
-  const from = latLonToVec(fromLatDeg, fromLonDeg);
-  const to = latLonToVec(toLatDeg, toLonDeg);
-  const dot = Math.max(-1, Math.min(1, from[0] * to[0] + from[1] * to[1] + from[2] * to[2]));
-  const shortAngle = Math.acos(dot);
-  const longAngle = Math.PI * 2 - shortAngle;
-  const axis = wrapAxis(from, to);
-  const segments = Math.max(LOOK_WRAP_MIN_SEGMENTS, Math.ceil(longAngle / LOOK_WRAP_STEP_RAD));
-  const stations: Array<[number, number]> = [[fromLatDeg, fromLonDeg]];
-  for (let index = 1; index < segments; index += 1) {
-    stations.push(vecToLatLon(rotateAround(from, axis, (-index / segments) * longAngle)));
+  if (stations.length < 2) return stations;
+  const maxStep = maxStepDeg * DEG;
+  const out: Array<[number, number]> = [stations[0]!];
+  for (let index = 1; index < stations.length; index += 1) {
+    const from = latLonToVec(out[out.length - 1]![0], out[out.length - 1]![1]);
+    const toLL = stations[index]!;
+    const to = latLonToVec(toLL[0], toLL[1]);
+    const dot = Math.max(-1, Math.min(1, from[0] * to[0] + from[1] * to[1] + from[2] * to[2]));
+    const angle = Math.acos(dot);
+    const splits = Math.max(1, Math.ceil(angle / maxStep));
+    const axis = wrapAxis(from, to);
+    for (let step = 1; step < splits; step += 1) {
+      out.push(vecToLatLon(rotateAround(from, axis, (step / splits) * angle)));
+    }
+    out.push(toLL);
   }
-  stations.push([toLatDeg, toLonDeg]);
-  return stations;
+  return out;
 }
 
 /** shuding's lat/lon → COBE `phi`/`theta` so a city sits facing the camera. */

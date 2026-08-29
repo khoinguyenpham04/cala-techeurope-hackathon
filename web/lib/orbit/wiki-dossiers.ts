@@ -70,6 +70,11 @@ const WIKI: Record<string, WikiBrief> = {
       { name: "Wikipedia", url: "https://en.wikipedia.org/wiki/Tiangong_space_station" },
       { name: "CMSA", url: "https://en.cmse.gov.cn/" },
     ],
+    {
+      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/2/25/Chinese_Tiangong_Space_Station.jpg/960px-Chinese_Tiangong_Space_Station.jpg",
+      alt: "Completed form of the Tiangong space station (Phase 1)",
+      credit: "Wikimedia Commons",
+    },
   ),
   CREW: wiki(
     "SpaceX",
@@ -167,6 +172,11 @@ const WIKI: Record<string, WikiBrief> = {
       { name: "Wikipedia", url: "https://en.wikipedia.org/wiki/Copernicus_Programme" },
       { name: "ESA", url: "https://www.esa.int/Applications/Observing_the_Earth/Copernicus" },
     ],
+    {
+      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ac/Sentinel-2A_in_the_gantry.jpg/960px-Sentinel-2A_in_the_gantry.jpg",
+      alt: "Sentinel-2A in the launch gantry at Europe's Spaceport",
+      credit: "ESA / Wikimedia Commons",
+    },
   ),
   COSMOS: wiki(
     "Russian / Soviet space programme (Kosmos series)",
@@ -404,6 +414,11 @@ const WIKI: Record<string, WikiBrief> = {
     "CelesTrak lists this as a rocket body (R/B) or debris (DEB). It is not a working satellite; it is leftover hardware still in orbit.",
     "catalog-debris",
     [{ name: "Wikipedia", url: "https://en.wikipedia.org/wiki/Space_debris" }],
+    {
+      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a1/Debris-GEO1280.jpg/960px-Debris-GEO1280.jpg",
+      alt: "NASA illustration of tracked objects in Earth orbit, mostly debris",
+      credit: "NASA / Wikimedia Commons",
+    },
   ),
 };
 

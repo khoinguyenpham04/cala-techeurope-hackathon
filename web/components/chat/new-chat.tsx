@@ -11,7 +11,9 @@ import {
   agentUrlForSession,
   type SatelliteChatContext,
 } from "@/lib/cala";
+import { overlayFor } from "@/lib/orbit/overlay";
 import { DEFAULT_MODEL, DEFAULT_THINKING } from "@/lib/models";
+import { packForSatellite } from "@/lib/sky/sat-pack";
 import {
   chatTitle,
   newSessionId,
@@ -27,9 +29,9 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 const SATELLITE_SUGGESTIONS = [
-  "Which organization is linked to this object, and what can you verify?",
-  "Which country is the operator associated with?",
-  "What is this satellite family used for?",
+  "Why was this built?",
+  "When was this built? What’s the history?",
+  "What is it used for?",
 ];
 
 export function NewChat({
@@ -48,15 +50,42 @@ export function NewChat({
   const router = useRouter();
   const sky = useSkySelection();
   const pane = compact || density === "pane";
-  const satellite =
-    satelliteProp ??
-    (sky?.satellite
-      ? {
-          noradId: sky.satellite.noradId,
-          name: sky.satellite.name,
-          city: sky.city.name,
-        }
-      : undefined);
+  const satellite = (() => {
+    const base =
+      satelliteProp ??
+      (sky?.satellite
+        ? {
+            noradId: sky.satellite.noradId,
+            name: sky.satellite.name,
+            city: sky.city.name,
+          }
+        : undefined);
+    if (!base) return undefined;
+    if (base.pack) {
+      return {
+        ...base,
+        pack: {
+          ...base.pack,
+          city: base.pack.city ?? base.city,
+          constellation: base.pack.constellation ?? base.constellation,
+        },
+      };
+    }
+    const pack = packForSatellite(
+      base.noradId,
+      base.name ?? `NORAD ${base.noradId}`,
+      overlayFor(sky?.overlay, base.noradId),
+    );
+    return {
+      ...base,
+      constellation: base.constellation ?? pack.constellation,
+      pack: {
+        ...pack,
+        city: base.city,
+        constellation: base.constellation ?? pack.constellation,
+      },
+    };
+  })();
   const [sending, setSending] = useState(false);
   const satelliteMode = Boolean(satellite?.noradId);
   const waitingForSelection = pane && Boolean(sky) && !satelliteMode;
@@ -102,6 +131,7 @@ export function NewChat({
               name: satellite?.name,
               constellation: satellite?.constellation,
               city: satellite?.city,
+              pack: satellite?.pack,
               model,
               thinking,
             }
@@ -132,6 +162,11 @@ export function NewChat({
       {pane ? (
         <SkyStoryCanvas
           noradId={satellite?.noradId ?? sky?.noradId}
+          onAsk={(question) => {
+            void startChat({ text: question, files: [] }).catch(() => {
+              // already surfaced as a toast
+            });
+          }}
           overlay={sky?.overlay}
           satellite={
             satelliteMode && satellite?.noradId

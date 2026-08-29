@@ -51,7 +51,8 @@ export interface ObserverLocation {
  * Default view is the full catalog shell ("All orbits"). HUD "Above city"
  * filters to elevation > 0° over the observer.
  * Altitude/elevation are the real physical values for the inspector.
- * COBE markers use `[latitudeDeg, longitudeDeg]`. Altitude is inspector-only.
+ * COBE markers use `[latitudeDeg, longitudeDeg]` plus a shared
+ * `markerElevation` halo. Real altitude stays on the inspector.
  * `displayRadius` is a leftover compressed Three.js scale (fixtures).
  */
 export interface VisibleSatellite {

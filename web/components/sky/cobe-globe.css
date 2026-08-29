@@ -46,7 +46,7 @@
 
   .sky-cobe-hit svg {
     overflow: visible;
-    filter: drop-shadow(0 0 2px rgb(5 7 12 / 0.9));
+    filter: drop-shadow(0 1px 3px rgb(5 7 12 / 0.95));
   }
 
   .sky-cobe-hit:focus-visible {

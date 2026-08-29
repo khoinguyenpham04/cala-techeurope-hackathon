@@ -145,9 +145,89 @@
   }
 }
 
+.satellite-hero-compact,
+.satellite-hero-compact .satellite-hero-photo,
+.satellite-hero-compact .satellite-hero-glyph {
+  min-height: 6.5rem;
+  height: 6.5rem;
+}
+
+.story-skeleton-hero {
+  min-height: 9.75rem;
+  background:
+    linear-gradient(
+      90deg,
+      oklch(1 0 0 / 0.04) 0%,
+      oklch(1 0 0 / 0.1) 50%,
+      oklch(1 0 0 / 0.04) 100%
+    );
+  background-size: 200% 100%;
+}
+
+.story-skeleton-line {
+  display: block;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: oklch(1 0 0 / 0.08);
+}
+
+.story-skeleton-line-short {
+  width: 62%;
+}
+
+.story-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin: 0;
+  padding-inline-start: 1rem;
+  border-inline-start: 1px solid oklch(1 0 0 / 0.1);
+  list-style: none;
+}
+
+.story-timeline-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding-inline-start: 0.75rem;
+}
+
+.story-timeline-item::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: calc(-1rem - 3.5px);
+  top: 0.4rem;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: color-mix(in oklab, var(--hero-accent, oklch(0.72 0.1 250)) 85%, white);
+  box-shadow: 0 0 0 3px oklch(0.2 0.02 260 / 0.9);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .story-skeleton-hero {
+    animation: story-skeleton-shimmer 1.6s ease-in-out infinite;
+  }
+}
+
+@keyframes story-skeleton-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+
+  to {
+    background-position: -100% 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .satellite-report-card {
     transition: none;
+  }
+
+  .story-skeleton-hero {
+    animation: none;
   }
 
   @starting-style {

@@ -1,7 +1,7 @@
 /**
  * Satellite report: seed from catalog + Cala overlay/dossier, then merge
  * optional agent `story-page` JSON. The UI is two identity/report cards plus
- * a feed of question cards. Empty-Cala dumps never become the card-2 lesson.
+ * a feed of story cards. Empty-Cala dumps never become the card-2 lesson.
  */
 
 import { EMPTY_CALA_MESSAGE, type SatelliteDossier, type SourcedField } from "@/lib/cala";
@@ -25,6 +25,29 @@ export type { ReportVisual } from "@/lib/sky/report-visual";
 
 export const STORY_PAGE_FENCE = "story-page";
 export const QUESTION_CARD_FENCE = "question-card";
+export const STORY_CARD_FENCE = "story-card";
+
+export type StoryPhase = "thinking" | "searching" | "designing" | "ready";
+export type StoryTemplate = "purpose" | "timeline" | "mission";
+export type StoryChatStatus = "submitted" | "streaming" | "ready" | "error";
+
+export type StoryCard = {
+  id: string;
+  phase: StoryPhase;
+  template: StoryTemplate;
+  question: string;
+  headline?: string;
+  dek?: string;
+  why?: string;
+  events?: { year: string; title: string; body?: string }[];
+  beats?: { title: string; body: string }[];
+  facts?: { label: string; value: string }[];
+  images?: { src: string; alt: string; credit?: string; sourceUrl?: string }[];
+  sources?: { name: string; url: string }[];
+  nextQuestions?: string[];
+  kind: "cala" | "web";
+  sourcesUnavailable?: boolean;
+};
 
 export type CalloutTone = "verified" | "unverified" | "catalog";
 export type StoryChipTone = "verified" | "catalog" | "unverified" | "debris" | "muted";
@@ -103,6 +126,7 @@ export interface StoryPage {
   lessonMarkdown: string | null;
   lessonStreaming: boolean;
   questionCards: QuestionCard[];
+  storyCards: StoryCard[];
 }
 
 export const SEED_BLOCK_IDS = {
@@ -152,6 +176,12 @@ type Claim = {
 
 const PAGE_FENCE_RE = /```(?:story-page|story-graph|json)\s*([\s\S]*?)```/gi;
 const QUESTION_FENCE_RE = /```question-card\s*([\s\S]*?)```/gi;
+const CARD_FENCE_PATTERN = "```(story-card|question-card)\\s*([\\s\\S]*?)```";
+const TEMPLATES = new Set<StoryTemplate>(["purpose", "timeline", "mission"]);
+
+function cardFenceRe(): RegExp {
+  return new RegExp(CARD_FENCE_PATTERN, "gi");
+}
 const EMPTY_CALA_RE = /^no verified cala data found\.?$/i;
 
 const TONES = new Set<CalloutTone>(["verified", "unverified", "catalog"]);
@@ -268,7 +298,7 @@ function heading(id: string, level: 1 | 2 | 3, text: string): StoryBlock {
 export function stripStoryPageFence(text: string): string {
   return text
     .replace(PAGE_FENCE_RE, "")
-    .replace(QUESTION_FENCE_RE, "")
+    .replace(cardFenceRe(), "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
@@ -339,6 +369,7 @@ export function parseQuestionCards(text: string | null | undefined): QuestionCar
   const trimmed = text?.trim() ?? "";
   if (!trimmed) return [];
   const cards: QuestionCard[] = [];
+  QUESTION_FENCE_RE.lastIndex = 0;
   const fences = [...trimmed.matchAll(QUESTION_FENCE_RE)];
   for (const [index, match] of fences.entries()) {
     const body = match[1]?.trim();
@@ -353,6 +384,180 @@ export function parseQuestionCards(text: string | null | undefined): QuestionCar
   return cards;
 }
 
+function readEvents(value: unknown): StoryCard["events"] {
+  if (!Array.isArray(value)) return undefined;
+  const events: NonNullable<StoryCard["events"]> = [];
+  for (const entry of value.slice(0, 6)) {
+    if (!isRecord(entry)) continue;
+    const year = asString(entry.year) ?? asString(entry.date);
+    const title = asString(entry.title) ?? asString(entry.heading);
+    if (!year || !title) continue;
+    events.push({
+      year,
+      title,
+      body: asString(entry.body) ?? asString(entry.text),
+    });
+  }
+  return events.length > 0 ? events : undefined;
+}
+
+function readBeats(value: unknown): StoryCard["beats"] {
+  if (!Array.isArray(value)) return undefined;
+  const beats: NonNullable<StoryCard["beats"]> = [];
+  for (const entry of value.slice(0, 3)) {
+    if (!isRecord(entry)) continue;
+    const title = asString(entry.title) ?? asString(entry.heading);
+    const body = asString(entry.body) ?? asString(entry.text);
+    if (!title || !body) continue;
+    beats.push({ title, body });
+  }
+  return beats.length > 0 ? beats : undefined;
+}
+
+function readFacts(value: unknown): StoryCard["facts"] {
+  if (!Array.isArray(value)) return undefined;
+  const facts: NonNullable<StoryCard["facts"]> = [];
+  for (const entry of value.slice(0, 4)) {
+    if (!isRecord(entry)) continue;
+    const label = asString(entry.label) ?? asString(entry.name);
+    const factValue = asString(entry.value) ?? asString(entry.body);
+    if (!label || !factValue) continue;
+    facts.push({ label, value: factValue });
+  }
+  return facts.length > 0 ? facts : undefined;
+}
+
+function readNextQuestions(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const questions = value.flatMap((item) => {
+    const text = asString(item);
+    return text ? [text] : [];
+  }).slice(0, 4);
+  return questions.length > 0 ? questions : undefined;
+}
+
+export function storyCardFromQuestion(card: QuestionCard): StoryCard {
+  return {
+    id: card.id,
+    phase: card.streaming ? "designing" : "ready",
+    template: "purpose",
+    question: card.question,
+    why: card.answer || undefined,
+    dek: card.answer || undefined,
+    images: card.images.length > 0 ? card.images : undefined,
+    sources: card.sources.length > 0 ? card.sources : undefined,
+    kind: card.kind,
+    sourcesUnavailable: card.sourcesUnavailable,
+  };
+}
+
+export function questionCardFromStory(card: StoryCard): QuestionCard {
+  return {
+    id: card.id,
+    question: card.question,
+    answer: card.why ?? card.dek ?? "",
+    images: card.images ?? [],
+    sources: card.sources ?? [],
+    kind: card.kind,
+    sourcesUnavailable: Boolean(card.sourcesUnavailable),
+    streaming: card.phase !== "ready",
+  };
+}
+
+function readStoryCard(value: unknown, fallbackId: string): StoryCard | null {
+  if (!isRecord(value)) return null;
+  const templateRaw = asString(value.template);
+  const template: StoryTemplate =
+    templateRaw && TEMPLATES.has(templateRaw as StoryTemplate)
+      ? (templateRaw as StoryTemplate)
+      : "purpose";
+  const question = asString(value.question) ?? asString(value.prompt) ?? "";
+  const headline = asString(value.headline) ?? asString(value.title);
+  const dek = asString(value.dek) ?? asString(value.summary);
+  const why = asString(value.why) ?? asString(value.answer);
+  const images = readImages(value.images);
+  const sources = readSources(value.sources) ?? [];
+  const events = readEvents(value.events);
+  const beats = readBeats(value.beats);
+  const facts = readFacts(value.facts);
+  const nextQuestions = readNextQuestions(value.nextQuestions);
+  const kind = asString(value.kind) === "cala" ? "cala" : "web";
+  const sourcesUnavailable =
+    value.sourcesUnavailable === true ||
+    (sources.length === 0 && value.unavailable === true);
+  if (
+    !question &&
+    !headline &&
+    !dek &&
+    !why &&
+    images.length === 0 &&
+    sources.length === 0 &&
+    !events &&
+    !beats &&
+    !facts
+  ) {
+    return null;
+  }
+  return {
+    id: asString(value.id) ?? fallbackId,
+    phase: "ready",
+    template,
+    question,
+    headline,
+    dek,
+    why,
+    events,
+    beats,
+    facts,
+    images: images.length > 0 ? images : undefined,
+    sources: sources.length > 0 ? sources : undefined,
+    nextQuestions,
+    kind,
+    sourcesUnavailable,
+  };
+}
+
+export function parseStoryCards(text: string | null | undefined): StoryCard[] {
+  const trimmed = text?.trim() ?? "";
+  if (!trimmed) return [];
+  const cards: StoryCard[] = [];
+  const fences = [...trimmed.matchAll(cardFenceRe())];
+  for (const [index, match] of fences.entries()) {
+    const fence = match[1];
+    const body = match[2]?.trim();
+    if (!body) continue;
+    try {
+      const parsed = JSON.parse(body) as unknown;
+      const card =
+        fence === "question-card"
+          ? (() => {
+              const legacy = readQuestionCard(parsed, `q-${index}`);
+              return legacy ? storyCardFromQuestion(legacy) : null;
+            })()
+          : readStoryCard(parsed, `q-${index}`);
+      if (card) cards.push(card);
+    } catch {
+      continue;
+    }
+  }
+  return cards;
+}
+
+export function storyPhaseFromChat(input: {
+  status?: StoryChatStatus;
+  streaming?: boolean;
+  hasToolCall?: boolean;
+  hasAssistantText?: boolean;
+  hasFence?: boolean;
+}): StoryPhase {
+  if (input.hasFence) return "ready";
+  const status =
+    input.status ?? (input.streaming ? "streaming" : "ready");
+  if (status === "streaming" && input.hasAssistantText) return "designing";
+  if (status === "streaming" && input.hasToolCall) return "searching";
+  return "thinking";
+}
+
 export function collectStoryPageExtras(texts: (string | null | undefined)[]): StoryBlock[] {
   let extras: StoryBlock[] = [];
   for (const text of texts) {
@@ -363,75 +568,103 @@ export function collectStoryPageExtras(texts: (string | null | undefined)[]): St
   return extras;
 }
 
-export function questionCardsFromTurns(input: {
+export function storyCardsFromTurns(input: {
   turns: { role: "user" | "assistant"; text: string }[];
+  status?: StoryChatStatus;
   streaming?: boolean;
-}): QuestionCard[] {
-  const cards: QuestionCard[] = [];
+  hasToolCall?: boolean;
+}): StoryCard[] {
+  const cards: StoryCard[] = [];
   let pendingQuestion: string | null = null;
+  let pendingAssistantText = false;
   let index = 0;
+  const working =
+    input.status === "submitted" ||
+    input.status === "streaming" ||
+    Boolean(input.streaming);
+
   for (const turn of input.turns) {
     if (turn.role === "user") {
       pendingQuestion = turn.text.trim();
+      pendingAssistantText = false;
       continue;
     }
-    const parsed = parseQuestionCards(turn.text);
+    const parsed = parseStoryCards(turn.text);
     if (parsed.length > 0) {
       for (const card of parsed) {
         cards.push({
           ...card,
           id: card.id || `q-${index}`,
           question: card.question || pendingQuestion || "Question",
+          phase: "ready",
         });
         index += 1;
       }
       pendingQuestion = null;
+      pendingAssistantText = false;
       continue;
     }
-    if (pendingQuestion && !input.streaming) {
+    pendingAssistantText = Boolean(turn.text.trim());
+    if (pendingQuestion && !working) {
       if (isEmptyCalaDump(turn.text)) {
         cards.push({
           id: `q-${index}`,
+          phase: "ready",
+          template: "purpose",
           question: pendingQuestion,
-          answer: "Sources unavailable",
-          images: [],
-          sources: [],
+          why: "Sources unavailable",
+          dek: "Sources unavailable",
           kind: "web",
           sourcesUnavailable: true,
         });
         index += 1;
         pendingQuestion = null;
+        pendingAssistantText = false;
       } else {
         const leftover = lessonFromAgentText(turn.text);
         if (leftover) {
           cards.push({
             id: `q-${index}`,
+            phase: "ready",
+            template: "purpose",
             question: pendingQuestion,
-            answer: leftover,
-            images: [],
-            sources: [],
+            why: leftover,
+            dek: leftover,
             kind: "web",
-            sourcesUnavailable: false,
           });
           index += 1;
           pendingQuestion = null;
+          pendingAssistantText = false;
         }
       }
     }
   }
-  if (pendingQuestion && input.streaming) {
+
+  if (pendingQuestion && working) {
     cards.push({
-      id: "streaming",
+      id: `q-${index}`,
+      phase: storyPhaseFromChat({
+        status: input.status,
+        streaming: input.streaming,
+        hasToolCall: input.hasToolCall,
+        hasAssistantText: pendingAssistantText,
+        hasFence: false,
+      }),
+      template: "purpose",
       question: pendingQuestion,
-      answer: "",
-      images: [],
-      sources: [],
       kind: "web",
-      sourcesUnavailable: false,
-      streaming: true,
     });
   }
   return cards;
+}
+
+export function questionCardsFromTurns(input: {
+  turns: { role: "user" | "assistant"; text: string }[];
+  streaming?: boolean;
+  status?: StoryChatStatus;
+  hasToolCall?: boolean;
+}): QuestionCard[] {
+  return storyCardsFromTurns(input).map(questionCardFromStory);
 }
 
 function readSources(value: unknown): StorySource[] | undefined {
@@ -827,6 +1060,7 @@ export function buildStoryPage(input: {
   lessonStreaming?: boolean;
   extra?: StoryBlock[] | null;
   questionCards?: QuestionCard[] | null;
+  storyCards?: StoryCard[] | null;
 }): StoryPage {
   const rawLesson = input.lessonText?.trim() ?? "";
   const extra = input.extra ?? (rawLesson ? parseStoryPageJson(rawLesson) : null);
@@ -872,6 +1106,11 @@ export function buildStoryPage(input: {
     blocks,
     lessonMarkdown: lessonMarkdown || null,
     lessonStreaming: Boolean(input.lessonStreaming) && !lessonMarkdown,
-    questionCards: input.questionCards ?? [],
+    questionCards:
+      input.questionCards ??
+      (input.storyCards ?? []).map(questionCardFromStory),
+    storyCards:
+      input.storyCards ??
+      (input.questionCards ?? []).map(storyCardFromQuestion),
   };
 }

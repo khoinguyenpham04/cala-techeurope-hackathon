@@ -6,12 +6,13 @@ import { SatelliteIcon } from "@/components/sky/satellite-icon";
 import { UNKNOWN_OWNER_COLOR } from "@/lib/orbit/constants";
 import type { ReportVisual } from "@/lib/sky/report-visual";
 import type {
-  QuestionCard,
   QuestionCardImage,
+  StoryCard,
   StoryChip,
   StoryChipTone,
   StoryFact,
   StoryPage,
+  StoryPhase,
   StorySource,
 } from "@/lib/sky/story-page";
 import { cn } from "@/lib/utils";
@@ -63,15 +64,20 @@ function SourceChip({ source }: { source: StorySource }) {
 function HeroMedia({
   visual,
   accent,
+  compact = false,
 }: {
   visual: ReportVisual;
   accent: string;
+  compact?: boolean;
 }) {
   const [failed, setFailed] = useState(false);
   const photo = visual.kind === "photo" && visual.src && !failed;
 
   return (
-    <div className="satellite-hero" style={{ "--hero-accent": accent } as CSSProperties}>
+    <div
+      className={cn("satellite-hero", compact && "satellite-hero-compact")}
+      style={{ "--hero-accent": accent } as CSSProperties}
+    >
       {photo ? (
         <>
           <img
@@ -160,21 +166,102 @@ function imageVisual(image: QuestionCardImage): ReportVisual {
   };
 }
 
-function QuestionCardView({
-  card,
-  accent,
-}: {
-  card: QuestionCard;
-  accent: string;
-}) {
-  const hero = card.images[0];
-  const extras = card.images.slice(1, 4);
-  const showSources = card.sources.length > 0;
-  const showUnavailable = card.sourcesUnavailable && !showSources;
+const PHASE_LABEL: Record<Exclude<StoryPhase, "ready">, string> = {
+  thinking: "Thinking",
+  searching: "Searching",
+  designing: "Designing",
+};
 
+function StorySources({
+  sources,
+  unavailable,
+}: {
+  sources?: StorySource[] | { name: string; url: string }[];
+  unavailable?: boolean;
+}) {
+  const showSources = Boolean(sources && sources.length > 0);
+  if (!showSources && !unavailable) return null;
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-[11px] font-medium tracking-[0.14em] text-muted-foreground uppercase">
+        Sources
+      </p>
+      {showSources ? (
+        <ul className="flex flex-wrap gap-1.5">
+          {sources!.map((source) => (
+            <li key={source.url || source.name}>
+              <SourceChip source={source} />
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-pretty text-sm leading-relaxed text-muted-foreground">
+          Sources unavailable
+        </p>
+      )}
+    </div>
+  );
+}
+
+function NextQuestions({
+  questions,
+  onAsk,
+}: {
+  questions?: string[];
+  onAsk?: (question: string) => void;
+}) {
+  if (!questions?.length) return null;
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-[11px] font-medium tracking-[0.14em] text-muted-foreground uppercase">
+        Ask next
+      </p>
+      <ul className="flex flex-wrap gap-1.5">
+        {questions.map((question) => (
+          <li key={question}>
+            <button
+              className="inline-flex max-w-full items-center rounded-full bg-secondary/80 px-2.5 py-1 text-left text-[11px] font-medium text-secondary-foreground ring-1 ring-foreground/8 transition-transform duration-150 ease-out hover:bg-secondary active:scale-[0.96]"
+              onClick={() => onAsk?.(question)}
+              type="button"
+            >
+              {question}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function PhotoStrip({ images }: { images: QuestionCardImage[] }) {
+  if (images.length === 0) return null;
+  return (
+    <ul className="grid grid-cols-3 gap-2">
+      {images.slice(0, 3).map((image) => (
+        <li key={image.src}>
+          <a
+            className="block overflow-hidden rounded-lg ring-1 ring-foreground/10"
+            href={image.sourceUrl ?? image.src}
+            rel="noreferrer"
+            target="_blank"
+          >
+            <img
+              alt={image.alt}
+              className="aspect-[4/3] w-full object-cover"
+              src={image.src}
+            />
+          </a>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function StorySkeleton({ card }: { card: StoryCard }) {
+  const label = card.phase === "ready" ? "Designing" : PHASE_LABEL[card.phase];
   return (
     <article className="satellite-report-card overflow-hidden rounded-2xl bg-card/90 shadow-[0_1px_0_oklch(1_0_0/0.06),0_16px_40px_oklch(0_0_0/0.32)] ring-1 ring-foreground/12">
-      {hero ? <HeroMedia accent={accent} visual={imageVisual(hero)} /> : null}
+      <div aria-hidden className="story-skeleton-hero" />
       <div className="flex flex-col gap-4 px-5 py-5">
         <div className="flex flex-col gap-1">
           <p className="text-[11px] font-medium tracking-[0.14em] text-muted-foreground uppercase">
@@ -184,64 +271,195 @@ function QuestionCardView({
             {card.question || "Question"}
           </h3>
         </div>
-        {card.streaming && !card.answer ? (
-          <Shimmer className="text-xs" duration={1.4}>
-            Writing…
-          </Shimmer>
-        ) : (
-          <p className="text-pretty text-sm leading-relaxed text-foreground/90">
-            {card.answer}
+        <Shimmer className="text-xs" duration={1.4}>
+          {label}
+        </Shimmer>
+        <div aria-hidden className="flex flex-col gap-2">
+          <span className="story-skeleton-line" />
+          <span className="story-skeleton-line story-skeleton-line-short" />
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function PurposeCard({
+  card,
+  accent,
+  onAsk,
+}: {
+  card: StoryCard;
+  accent: string;
+  onAsk?: (question: string) => void;
+}) {
+  const hero = card.images?.[0];
+  const why = card.why ?? card.dek;
+  return (
+    <article
+      className="satellite-report-card overflow-hidden rounded-2xl bg-card/90 shadow-[0_1px_0_oklch(1_0_0/0.06),0_16px_40px_oklch(0_0_0/0.32)] ring-1 ring-foreground/12"
+      style={{ "--hero-accent": accent } as CSSProperties}
+    >
+      {hero ? <HeroMedia accent={accent} visual={imageVisual(hero)} /> : null}
+      <div className="flex flex-col gap-4 px-5 py-5">
+        <div className="flex flex-col gap-1">
+          <p className="text-[11px] font-medium tracking-[0.14em] text-muted-foreground uppercase">
+            Why built
           </p>
-        )}
-        {extras.length > 0 ? (
-          <ul className="grid grid-cols-3 gap-2">
-            {extras.map((image) => (
-              <li key={image.src}>
-                <a
-                  className="block overflow-hidden rounded-lg ring-1 ring-foreground/10"
-                  href={image.sourceUrl ?? image.src}
-                  rel="noreferrer"
-                  target="_blank"
-                >
-                  <img
-                    alt={image.alt}
-                    className="aspect-[4/3] w-full object-cover"
-                    src={image.src}
-                  />
-                </a>
+          <h3 className="font-heading text-pretty text-base font-medium tracking-tight">
+            {card.headline || card.question || "Why was this built?"}
+          </h3>
+          {card.dek && card.dek !== why ? (
+            <p className="text-pretty text-sm leading-relaxed text-muted-foreground">
+              {card.dek}
+            </p>
+          ) : null}
+        </div>
+        {why ? (
+          <p className="text-pretty text-sm leading-relaxed text-foreground/90">{why}</p>
+        ) : null}
+        {card.facts && card.facts.length > 0 ? (
+          <ul className="flex flex-wrap gap-1.5">
+            {card.facts.map((fact) => (
+              <li key={`${fact.label}-${fact.value}`}>
+                <span className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-secondary/80 px-2.5 py-1 text-[11px] font-medium text-secondary-foreground ring-1 ring-foreground/8">
+                  <span className="text-muted-foreground">{fact.label}</span>
+                  <span className="truncate">{fact.value}</span>
+                </span>
               </li>
             ))}
           </ul>
         ) : null}
-        {showUnavailable ? (
-          <p className="text-pretty text-sm leading-relaxed text-muted-foreground">
-            Sources unavailable
-          </p>
-        ) : null}
-        {showSources ? (
-          <div className="flex flex-col gap-2">
-            <p className="text-[11px] font-medium tracking-[0.14em] text-muted-foreground uppercase">
-              Sources
-            </p>
-            <ul className="flex flex-wrap gap-1.5">
-              {card.kind === "web" ? (
-                <li>
-                  <span className="inline-flex h-5 items-center rounded-full bg-secondary/70 px-2 text-[10px] font-medium text-secondary-foreground ring-1 ring-foreground/8">
-                    Web
-                  </span>
-                </li>
-              ) : null}
-              {card.sources.map((source) => (
-                <li key={source.url || source.name}>
-                  <SourceChip source={source} />
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
+        <StorySources sources={card.sources} unavailable={card.sourcesUnavailable} />
+        <NextQuestions onAsk={onAsk} questions={card.nextQuestions} />
       </div>
     </article>
   );
+}
+
+function TimelineCard({
+  card,
+  accent,
+  onAsk,
+}: {
+  card: StoryCard;
+  accent: string;
+  onAsk?: (question: string) => void;
+}) {
+  const hero = card.images?.[0];
+  const events = card.events ?? [];
+  return (
+    <article
+      className="satellite-report-card overflow-hidden rounded-2xl bg-card/90 shadow-[0_1px_0_oklch(1_0_0/0.06),0_16px_40px_oklch(0_0_0/0.32)] ring-1 ring-foreground/12"
+      style={{ "--hero-accent": accent } as CSSProperties}
+    >
+      {hero ? <HeroMedia accent={accent} compact visual={imageVisual(hero)} /> : null}
+      <div className="flex flex-col gap-4 px-5 py-5">
+        <div className="flex flex-col gap-1">
+          <p className="text-[11px] font-medium tracking-[0.14em] text-muted-foreground uppercase">
+            History
+          </p>
+          <h3 className="font-heading text-pretty text-base font-medium tracking-tight">
+            {card.headline || card.question || "When was this built?"}
+          </h3>
+          {card.dek ? (
+            <p className="text-pretty text-sm leading-relaxed text-muted-foreground">
+              {card.dek}
+            </p>
+          ) : null}
+        </div>
+        {events.length > 0 ? (
+          <ol className="story-timeline">
+            {events.map((event) => (
+              <li className="story-timeline-item" key={`${event.year}-${event.title}`}>
+                <p className="font-mono text-[11px] text-muted-foreground tabular-nums">
+                  {event.year}
+                </p>
+                <p className="text-pretty text-sm font-medium text-foreground">{event.title}</p>
+                {event.body ? (
+                  <p className="text-pretty text-sm leading-relaxed text-foreground/80">
+                    {event.body}
+                  </p>
+                ) : null}
+              </li>
+            ))}
+          </ol>
+        ) : null}
+        <StorySources sources={card.sources} unavailable={card.sourcesUnavailable} />
+        <NextQuestions onAsk={onAsk} questions={card.nextQuestions} />
+      </div>
+    </article>
+  );
+}
+
+function MissionCard({
+  card,
+  accent,
+  onAsk,
+}: {
+  card: StoryCard;
+  accent: string;
+  onAsk?: (question: string) => void;
+}) {
+  const beats = card.beats ?? [];
+  const strip = card.images ?? [];
+  return (
+    <article
+      className="satellite-report-card overflow-hidden rounded-2xl bg-card/90 shadow-[0_1px_0_oklch(1_0_0/0.06),0_16px_40px_oklch(0_0_0/0.32)] ring-1 ring-foreground/12"
+      style={{ "--hero-accent": accent } as CSSProperties}
+    >
+      <div className="flex flex-col gap-4 px-5 py-5">
+        <div className="flex flex-col gap-1">
+          <p className="text-[11px] font-medium tracking-[0.14em] text-muted-foreground uppercase">
+            Mission
+          </p>
+          <h3 className="font-heading text-pretty text-base font-medium tracking-tight">
+            {card.headline || card.question || "What is it used for?"}
+          </h3>
+          {card.dek ? (
+            <p className="text-pretty text-sm leading-relaxed text-muted-foreground">
+              {card.dek}
+            </p>
+          ) : null}
+        </div>
+        {beats.length > 0 ? (
+          <ol className="flex flex-col gap-4">
+            {beats.map((beat) => (
+              <li className="flex flex-col gap-1" key={beat.title}>
+                <p className="text-sm font-medium text-foreground">{beat.title}</p>
+                <p className="text-pretty text-sm leading-relaxed text-foreground/80">
+                  {beat.body}
+                </p>
+              </li>
+            ))}
+          </ol>
+        ) : null}
+        <PhotoStrip images={strip} />
+        <StorySources sources={card.sources} unavailable={card.sourcesUnavailable} />
+        <NextQuestions onAsk={onAsk} questions={card.nextQuestions} />
+      </div>
+    </article>
+  );
+}
+
+function StoryCardView({
+  card,
+  accent,
+  onAsk,
+}: {
+  card: StoryCard;
+  accent: string;
+  onAsk?: (question: string) => void;
+}) {
+  if (card.phase !== "ready") {
+    return <StorySkeleton card={card} />;
+  }
+  if (card.template === "timeline") {
+    return <TimelineCard accent={accent} card={card} onAsk={onAsk} />;
+  }
+  if (card.template === "mission") {
+    return <MissionCard accent={accent} card={card} onAsk={onAsk} />;
+  }
+  return <PurposeCard accent={accent} card={card} onAsk={onAsk} />;
 }
 
 function ExtraNote({ block }: { block: StoryPage["extraBlocks"][number] }) {
@@ -272,9 +490,11 @@ function ExtraNote({ block }: { block: StoryPage["extraBlocks"][number] }) {
 export function SatelliteReport({
   page,
   accent,
+  onAsk,
 }: {
   page: StoryPage;
   accent?: string | null;
+  onAsk?: (question: string) => void;
 }) {
   const identity = page.identity;
   const heroAccent = accent?.trim() || UNKNOWN_OWNER_COLOR;
@@ -386,8 +606,13 @@ export function SatelliteReport({
         </div>
       </article>
 
-      {page.questionCards.map((card) => (
-        <QuestionCardView accent={heroAccent} card={card} key={card.id} />
+      {page.storyCards.map((card) => (
+        <StoryCardView
+          accent={heroAccent}
+          card={card}
+          key={card.id}
+          onAsk={onAsk}
+        />
       ))}
     </section>
   );

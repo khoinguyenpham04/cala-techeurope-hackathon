@@ -73,11 +73,28 @@ export interface CalaCitation {
   snippet?: string;
 }
 
+/** Catalog + Cala facts pack sent on satellite chat start. Not invented. */
+export type SatPack = {
+  noradId: string;
+  name: string;
+  constellation?: string;
+  city?: string;
+  blurb?: string;
+  operator?: { value: string; sources: { name: string; url: string }[] };
+  parent?: { value: string; sources: { name: string; url: string }[] };
+  country?: { value: string; sources: { name: string; url: string }[] };
+  purpose?: { value: string; sources: { name: string; url: string }[] };
+  image?: { src: string; alt: string; credit: string; sourceUrl?: string };
+  evidenceState?: "verified" | "partial" | "unknown";
+  seeded?: boolean;
+};
+
 export interface SatelliteChatContext {
   noradId: string;
   name?: string;
   constellation?: string;
   city?: string;
+  pack?: SatPack;
 }
 
 const MAX_ENRICH_SATELLITES = 120;

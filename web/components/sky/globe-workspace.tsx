@@ -53,6 +53,7 @@ export function GlobeWorkspace({
         onSelect={onSelect}
         overlay={overlay}
         selectedNoradId={selectedNoradId}
+        selectedOmm={selectedOmm}
         visible={visible}
       />
       <SkyHud
