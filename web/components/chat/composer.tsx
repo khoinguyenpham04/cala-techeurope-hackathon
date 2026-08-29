@@ -76,6 +76,7 @@ function ComposerForm({
   tools,
   className,
   textareaProps,
+  onStop,
 }: ChatComposerProps) {
   return (
     <PromptInput
@@ -106,10 +107,12 @@ function ComposerForm({
           <ComposerSpeech />
           {tools}
         </PromptInputTools>
-        {/* Submitting while a reply is in flight would be dropped by the
-            caller's guard, and the composer would still clear the draft. */}
         <PromptInputSubmit
-          disabled={status === "submitted" || status === "streaming"}
+          disabled={
+            Boolean(textareaProps?.disabled) ||
+            ((status === "submitted" || status === "streaming") && !onStop)
+          }
+          onStop={onStop}
           status={status}
         />
       </PromptInputFooter>
@@ -124,6 +127,8 @@ export interface ChatComposerProps {
   tools?: ReactNode;
   className?: string;
   textareaProps?: ComponentProps<typeof PromptInputTextarea>;
+  /** Flue `client.abort()` — shown as stop while streaming. */
+  onStop?: () => void;
 }
 
 // The one composer used on the new-chat screen and inside a chat: text plus

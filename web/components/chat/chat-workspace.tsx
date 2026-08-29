@@ -20,7 +20,8 @@ import {
 } from "@/lib/sessions";
 import { cn } from "@/lib/utils";
 import { useFlueAgent } from "@flue/react";
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { createFlueClient } from "@flue/sdk";
+import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 
 type ChatStatus = "submitted" | "streaming" | "ready" | "error";
 
@@ -42,7 +43,8 @@ export function ChatWorkspace({
   density?: "page" | "pane";
 }) {
   const kind = sessionKindFromId(sessionId);
-  const agent = useFlueAgent({ url: agentUrlForSession(sessionId, kind) });
+  const url = agentUrlForSession(sessionId, kind);
+  const agent = useFlueAgent({ url });
 
   // The sidebar entry for this conversation, read reactively from the session
   // store; recovered from the first user message when the chat was started on
@@ -82,18 +84,29 @@ export function ChatWorkspace({
   function handleSubmit(message: PromptInputMessage) {
     const text = message.text?.trim() ?? "";
     const images = toDeliveredImages(message.files);
-    if ((!text && images.length === 0) || working) return;
+    if (working) {
+      // PromptInput clears the draft on a sync return; throw so Enter during
+      // a reply keeps what the user typed for the next turn.
+      throw new Error("Reply still in progress.");
+    }
+    if (!text && images.length === 0) return;
     void agent.sendMessage(
       text || "See the attached image.",
       images.length ? { images } : undefined,
     );
   }
 
+  const handleStop = useCallback(() => {
+    // Relative URLs resolve in the browser; creating the client at render
+    // would throw during SSR ("relative url requires a browser").
+    void createFlueClient({ url }).abort();
+  }, [url]);
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <header
         className={cn(
-          "flex items-center gap-3 border-b py-3",
+          "flex shrink-0 items-center gap-3 border-b py-3",
           pane ? "px-3" : "px-4 lg:px-6",
         )}
       >
@@ -128,7 +141,7 @@ export function ChatWorkspace({
       </header>
 
       {agent.error && (
-        <div className="border-b bg-destructive/10 px-4 py-2 text-destructive text-sm">
+        <div className="shrink-0 border-b bg-destructive/10 px-4 py-2 text-destructive text-sm">
           {agent.error.message}
         </div>
       )}
@@ -145,9 +158,15 @@ export function ChatWorkspace({
         status={agent.status}
       />
 
-      <div className={cn("border-t py-4", pane ? "px-3" : "px-6")}>
+      <div
+        className={cn(
+          "shrink-0 border-t bg-background py-3",
+          pane ? "px-3" : "px-6 py-4",
+        )}
+      >
         <ChatComposer
-          className={pane ? "w-full" : "mx-auto max-w-3xl"}
+          className="w-full"
+          onStop={working ? handleStop : undefined}
           onSubmit={handleSubmit}
           status={chatStatus}
           textareaProps={{

@@ -78,7 +78,7 @@ export function NewChat({
   async function startChat(message: PromptInputMessage) {
     const body = message.text?.trim() ?? "";
     const images = toDeliveredImages(message.files);
-    if ((!body && images.length === 0) || sending || waitingForSelection) return;
+    if ((!body && images.length === 0) || sending) return;
     if (satelliteMode && !satellite?.noradId) return;
     setSending(true);
     const kind: ChatKind = satelliteMode ? "satellite" : "assistant";
@@ -135,16 +135,16 @@ export function NewChat({
   return (
     <div
       className={cn(
-        "flex flex-col",
-        pane
-          ? "min-h-0 flex-1 justify-end gap-4 px-3 py-4"
-          : "flex-1 items-center justify-center gap-6 px-6",
+        "flex min-h-0 flex-1 flex-col overflow-hidden",
+        pane ? "px-3 py-3" : "items-center justify-center gap-6 px-6",
       )}
     >
       <div
         className={cn(
-          "flex flex-col gap-2",
-          pane ? "items-start text-left" : "items-center text-center",
+          "flex min-h-0 flex-col gap-2",
+          pane
+            ? "flex-1 items-start justify-center text-left"
+            : "items-center text-center",
         )}
       >
         {!pane && (
@@ -185,7 +185,7 @@ export function NewChat({
         )}
         <p className="max-w-md text-muted-foreground text-sm">
           {waitingForSelection
-            ? "Click a payload on the globe. Chat answers only from cited Cala evidence."
+            ? "Click a payload on the globe, or send a message to start a chat."
             : satelliteMode
               ? "Answers come only from cited Cala evidence. Unknown stays unknown."
               : "Ask anything. Conversations are saved in the sidebar and replay when you come back."}
@@ -193,11 +193,10 @@ export function NewChat({
       </div>
       <div
         className={cn(
-          "flex w-full flex-col gap-3",
-          pane ? "max-w-none" : "max-w-2xl",
+          "flex w-full shrink-0 flex-col gap-3",
+          pane ? "max-w-none pt-3" : "max-w-2xl",
         )}
       >
-        {!waitingForSelection && (
         <ChatComposer
           onSubmit={startChat}
           status={sending ? "submitted" : "ready"}
@@ -205,7 +204,9 @@ export function NewChat({
             autoFocus: !pane,
             placeholder: satelliteMode
               ? "Ask who owns this satellite..."
-              : "Ask anything...",
+              : waitingForSelection
+                ? "Message the assistant, or select a satellite..."
+                : "Ask anything...",
           }}
           tools={
             <>
@@ -214,7 +215,6 @@ export function NewChat({
             </>
           }
         />
-        )}
         {suggestions.length > 0 && (
           <Suggestions className={pane ? undefined : "mx-auto"}>
             {suggestions.map((suggestion) => (
