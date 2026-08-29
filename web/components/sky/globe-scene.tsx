@@ -1,6 +1,7 @@
 "use client";
 
 import { CityMarker } from "@/components/sky/city-marker";
+import { OrbitPath } from "@/components/sky/orbit-path";
 import { SatelliteLayer } from "@/components/sky/satellite-layer";
 import type { City } from "@/lib/geo/cities";
 import {
@@ -8,11 +9,22 @@ import {
   EARTH_TILT_DEG,
 } from "@/lib/orbit/constants";
 import { geodeticToScene } from "@/lib/orbit/coordinates";
-import type { SatelliteOverlayMap, VisibleSatellite } from "@/lib/orbit/types";
+import type { SatelliteOverlayMap, SlimOmm, VisibleSatellite } from "@/lib/orbit/types";
 import { OrbitControls, Stars } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
+
+/**
+ * Drop NASA Blue Marble Next Generation (equirectangular JPEG) here:
+ * https://eoimages.gsfc.nasa.gov/images/imagerecords/73000/73909/world.topo.bathy.200412.3x5400x2700.jpg
+ * Page: https://visibleearth.nasa.gov/images/73909/december-blue-marble-next-generation
+ * File: `web/public/earth/blue-marble.jpg` → URL `/earth/blue-marble.jpg`.
+ * Missing file keeps the procedural Earth; we do not retry after a failed load.
+ */
+const BLUE_MARBLE_URL = "/earth/blue-marble.jpg";
+
+let blueMarbleFailed = false;
 
 function makeGraticuleTexture() {
   const canvas = document.createElement("canvas");
@@ -57,27 +69,70 @@ function makeGraticuleTexture() {
 }
 
 function Earth() {
-  const texture = useMemo(() => makeGraticuleTexture(), []);
-  useEffect(() => () => texture.dispose(), [texture]);
+  const gl = useThree((state) => state.gl);
+  const [marble, setMarble] = useState<THREE.Texture | null>(null);
+  const grid = useMemo(() => makeGraticuleTexture(), []);
+
+  useEffect(() => {
+    if (blueMarbleFailed) return;
+    let cancelled = false;
+    let loaded: THREE.Texture | null = null;
+
+    const loader = new THREE.TextureLoader();
+    loader.load(
+      BLUE_MARBLE_URL,
+      (texture) => {
+        if (cancelled) {
+          texture.dispose();
+          return;
+        }
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.anisotropy = Math.min(16, gl.capabilities.getMaxAnisotropy());
+        texture.minFilter = THREE.LinearMipmapLinearFilter;
+        texture.magFilter = THREE.LinearFilter;
+        texture.generateMipmaps = true;
+        texture.needsUpdate = true;
+        loaded = texture;
+        setMarble(texture);
+      },
+      undefined,
+      () => {
+        blueMarbleFailed = true;
+      },
+    );
+
+    return () => {
+      cancelled = true;
+      loaded?.dispose();
+    };
+  }, [gl]);
+
+  useEffect(() => {
+    if (marble) grid.dispose();
+  }, [grid, marble]);
+
+  useEffect(() => () => grid.dispose(), [grid]);
+
+  const photo = marble != null;
 
   return (
     <group>
       <mesh>
-        <sphereGeometry args={[EARTH_RADIUS_SCENE, 64, 48]} />
+        <sphereGeometry args={[EARTH_RADIUS_SCENE, 96, 64]} />
         <meshStandardMaterial
-          color="#c5d4e8"
-          emissive="#0b1220"
-          emissiveIntensity={0.4}
-          map={texture}
-          metalness={0.08}
-          roughness={0.92}
+          color={photo ? "#ffffff" : "#c5d4e8"}
+          emissive={photo ? "#000000" : "#0b1220"}
+          emissiveIntensity={photo ? 0 : 0.4}
+          map={marble ?? grid}
+          metalness={0.04}
+          roughness={photo ? 0.82 : 0.92}
         />
       </mesh>
       <mesh>
-        <sphereGeometry args={[EARTH_RADIUS_SCENE * 1.045, 48, 32]} />
+        <sphereGeometry args={[EARTH_RADIUS_SCENE * 1.028, 48, 32]} />
         <meshBasicMaterial
-          color="#5b8def"
-          opacity={0.14}
+          color={photo ? "#6ea8ff" : "#5b8def"}
+          opacity={photo ? 0.1 : 0.14}
           side={THREE.BackSide}
           transparent
         />
@@ -132,26 +187,29 @@ function GlobeContents({
   visible,
   overlay,
   selectedNoradId,
+  selectedOmm,
   onSelect,
 }: {
   city: City;
   visible: VisibleSatellite[];
   overlay: SatelliteOverlayMap;
   selectedNoradId: string | null;
+  selectedOmm: SlimOmm | null;
   onSelect: (noradId: string | null) => void;
 }) {
   const tilt = THREE.MathUtils.degToRad(EARTH_TILT_DEG);
 
   return (
     <>
-      <color args={["#05070c"]} attach="background" />
-      <ambientLight intensity={0.42} />
-      <directionalLight intensity={1.35} position={[6, 3.2, 4]} />
-      <directionalLight color="#93c5fd" intensity={0.22} position={[-5, -2, -3]} />
-      <Stars count={1800} depth={40} factor={2.2} fade radius={60} speed={0.2} />
+      <color args={["#000000"]} attach="background" />
+      <ambientLight intensity={0.55} />
+      <directionalLight intensity={2.1} position={[6, 3.2, 4]} />
+      <directionalLight color="#93c5fd" intensity={0.18} position={[-5, -2, -3]} />
+      <Stars count={1400} depth={40} factor={1.8} fade radius={60} speed={0.15} />
       <group rotation={[tilt, 0, 0]}>
         <Earth />
         <CityMarker city={city} />
+        <OrbitPath omm={selectedOmm} />
         <SatelliteLayer
           onSelect={onSelect}
           overlay={overlay}
@@ -176,12 +234,14 @@ export function GlobeScene({
   visible,
   overlay,
   selectedNoradId,
+  selectedOmm = null,
   onSelect,
 }: {
   city: City;
   visible: VisibleSatellite[];
   overlay: SatelliteOverlayMap;
   selectedNoradId: string | null;
+  selectedOmm?: SlimOmm | null;
   onSelect: (noradId: string | null) => void;
 }) {
   const glRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -205,7 +265,7 @@ export function GlobeScene({
       }}
       onCreated={({ gl }) => {
         glRef.current = gl;
-        gl.setClearColor("#05070c");
+        gl.setClearColor("#000000");
         gl.outputColorSpace = THREE.SRGBColorSpace;
         gl.setPixelRatio(Math.min(window.devicePixelRatio, 2));
       }}
@@ -216,6 +276,7 @@ export function GlobeScene({
         onSelect={onSelect}
         overlay={overlay}
         selectedNoradId={selectedNoradId}
+        selectedOmm={selectedOmm}
         visible={visible}
       />
     </Canvas>
