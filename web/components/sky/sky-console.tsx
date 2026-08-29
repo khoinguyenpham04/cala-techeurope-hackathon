@@ -108,7 +108,7 @@ export function SkyConsole({ children }: { children: ReactNode }) {
         >
           <div className="flex items-center gap-2 border-b px-3 py-2">
             <SidebarTrigger className="-ml-1" />
-            <p className="min-w-0 flex-1 truncate font-medium text-sm">Sky Console</p>
+            <p className="min-w-0 flex-1 truncate font-medium text-sm">Skyla</p>
             <TabsList className="h-8">
               <TabsTrigger value="sky">Sky</TabsTrigger>
               <TabsTrigger value="ask">Ask</TabsTrigger>

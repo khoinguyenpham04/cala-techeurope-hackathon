@@ -1,4 +1,4 @@
-# Sky Console
+# Skyla
 
 TechEurope × Cala hackathon MVP: a three-pane satellite console. A local stations catalog is propagated over **Barcelona**; Cala progressively paints verified owners; the right pane answers only from cited Cala evidence.
 

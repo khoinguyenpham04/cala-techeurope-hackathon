@@ -41,7 +41,7 @@ export function NewChat({
   onStarted,
 }: {
   satellite?: SatelliteChatContext;
-  /** Right-pane density. Preferred by Sky Console. */
+  /** Right-pane density. Preferred by Skyla. */
   compact?: boolean;
   density?: "page" | "pane";
   /** If set, the starter stays in-pane instead of routing to `/chat/[id]`. */
@@ -193,7 +193,7 @@ export function NewChat({
             ? satellite?.name
               ? `Ask about ${satellite.name}`
               : `Ask about NORAD ${satellite?.noradId}`
-            : "Who owns the sky?"}
+            : "Skyla"}
         </h1>
         {satelliteMode && (
           <div className="flex flex-wrap items-center gap-1.5">

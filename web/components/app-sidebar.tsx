@@ -53,7 +53,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               render={<Link href="/" />}
             >
               <SparkleIcon className="size-5! text-primary" />
-              <span className="text-base font-semibold">Who Owns the Sky?</span>
+              <span className="text-base font-semibold">Skyla</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -68,7 +68,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   render={<Link href="/" />}
                 >
                   <PlusCircleIcon />
-                  <span>Explore the sky</span>
+                  <span>Explore</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>

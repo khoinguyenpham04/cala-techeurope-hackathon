@@ -18,7 +18,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Who Owns the Sky?",
+  title: "Skyla",
   description:
     "A live orbital accountability map powered by CelesTrak, Cala, satellite.js, and Flue.",
 };

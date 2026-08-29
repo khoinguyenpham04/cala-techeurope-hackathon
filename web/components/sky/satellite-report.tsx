@@ -518,7 +518,7 @@ export function SatelliteReport({
               <span className="satellite-hero-orbit satellite-hero-orbit-a" />
               <span className="satellite-hero-orbit satellite-hero-orbit-b" />
               <SatelliteIcon className="satellite-hero-icon size-10" strokeWidth={1.5} />
-              <p className="satellite-hero-caption">Sky console</p>
+              <p className="satellite-hero-caption">Skyla</p>
             </div>
           </div>
           <div className="flex flex-col gap-2 px-5 py-5">

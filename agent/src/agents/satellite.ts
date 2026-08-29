@@ -89,7 +89,7 @@ export function Satellite() {
 			? 'The pack already has operator, parent, country, and purpose. Do not call lookup_satellite_dossier.'
 			: `The pack is missing: ${missingRows.join(', ')}. Call lookup_satellite_dossier once to fill those gaps only.`;
 
-	return `You are Sky Console’s satellite analyst for a single catalog object: ${label || 'an unspecified NORAD ID'}.${city}
+	return `You are Skyla’s satellite analyst for a single catalog object: ${label || 'an unspecified NORAD ID'}.${city}
 
 This conversation is pinned to NORAD ID ${init?.noradId ?? '(missing)'}. You may not discuss a different satellite.
 
