@@ -1,5 +1,6 @@
 "use client";
 
+import { SatelliteIcon } from "@/components/sky/satellite-icon";
 import {
   Combobox,
   ComboboxContent,
@@ -75,6 +76,7 @@ export function SatelliteSearch({
           <ComboboxList>
             {matches.map((sat) => (
               <ComboboxItem key={sat.noradId} value={sat}>
+                <SatelliteIcon className="size-3.5 text-sky-400" />
                 <span className="min-w-0 flex-1 truncate">{sat.name}</span>
                 <span className="ml-auto font-mono text-[10px] text-sky-400 tabular-nums">
                   #{sat.noradId}
@@ -88,7 +90,7 @@ export function SatelliteSearch({
         className="border-white/10 bg-black/35 text-sky-100 hover:bg-white/10"
         onClick={onDemoPick}
         size="sm"
-        title="Open a source-backed Sentinel example"
+        title="Open a source-backed ISS example"
         variant="outline"
       >
         Demo pick

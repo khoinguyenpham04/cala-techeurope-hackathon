@@ -1,12 +1,13 @@
 "use client";
 
-import { StoryPageEditor } from "@/components/sky/story-page-editor";
+import { SatelliteReport } from "@/components/sky/satellite-report";
 import type { SatelliteDossier } from "@/lib/cala";
 import { overlayFor } from "@/lib/orbit/overlay";
 import type { SatelliteOverlayMap } from "@/lib/orbit/types";
 import {
   buildStoryPage,
-  parseStoryPageJson,
+  collectStoryPageExtras,
+  type QuestionCard,
   type StoryObjectIdentity,
 } from "@/lib/sky/story-page";
 import { cn } from "@/lib/utils";
@@ -19,7 +20,8 @@ export function SkyStoryCanvas({
   noradId,
   dossier,
   lessonText,
-  lessonStreaming,
+  questionCards,
+  extraTexts,
 }: {
   className?: string;
   satellite: StoryObjectIdentity | null;
@@ -29,6 +31,8 @@ export function SkyStoryCanvas({
   userPrompt?: string | null;
   lessonText?: string | null;
   lessonStreaming?: boolean;
+  questionCards?: QuestionCard[] | null;
+  extraTexts?: (string | null | undefined)[] | null;
 }) {
   const selectedNorad = satellite?.noradId ?? noradId ?? null;
   const selectedName =
@@ -39,8 +43,8 @@ export function SkyStoryCanvas({
   }, [selectedName, selectedNorad]);
   const overlayRow = selectedNorad ? overlayFor(overlay, selectedNorad) : undefined;
   const extraBlocks = useMemo(
-    () => (lessonText ? parseStoryPageJson(lessonText) : null),
-    [lessonText],
+    () => collectStoryPageExtras(extraTexts?.length ? extraTexts : [lessonText]),
+    [extraTexts, lessonText],
   );
 
   const page = useMemo(
@@ -49,18 +53,21 @@ export function SkyStoryCanvas({
         satellite: identity,
         overlay: overlayRow,
         dossier,
-        lessonText,
-        lessonStreaming,
+        lessonText: null,
+        lessonStreaming: false,
         extra: extraBlocks,
+        questionCards,
       }),
-    [identity, overlayRow, dossier, lessonText, lessonStreaming, extraBlocks],
+    [identity, overlayRow, dossier, extraBlocks, questionCards],
   );
 
   return (
     <div className={cn("relative min-h-0 min-w-0 flex-1 overflow-y-auto", className)}>
-      <div className="mx-auto w-full max-w-xl px-5 py-8 sm:px-6">
-        <StoryPageEditor key={selectedNorad ?? "empty"} page={page} />
-      </div>
+      <SatelliteReport
+        accent={overlayRow?.ownerColor}
+        key={selectedNorad ?? "empty"}
+        page={page}
+      />
     </div>
   );
 }

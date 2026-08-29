@@ -69,40 +69,45 @@ function defaultNode(key: string): GraphNode | undefined {
 }
 
 async function hydrateFromDisk() {
-	for (const [key, cala] of Object.entries(BUNDLED_CALA_RECORDS)) {
-		const seed = seedFromGroupKey(key);
+	try {
+		const raw = await readFile(GRAPH_PATH, 'utf8');
+		const parsed = JSON.parse(raw) as PersistedGraph;
+		if (parsed.version === GRAPH_VERSION && parsed.nodes) {
+			rateLimitedUntil = typeof parsed.rateLimitedUntil === 'number' ? parsed.rateLimitedUntil : 0;
+			backoffMs =
+				typeof parsed.backoffMs === 'number' && parsed.backoffMs >= MIN_BACKOFF_MS
+					? parsed.backoffMs
+					: MIN_BACKOFF_MS;
+			strike = typeof parsed.strike === 'number' && parsed.strike >= 0 ? parsed.strike : 0;
+			for (const [key, node] of Object.entries(parsed.nodes)) {
+				if (!node || typeof node !== 'object') continue;
+				const seed = node.seed ?? seedFromGroupKey(key);
+				nodes.set(key, {
+					...node,
+					key,
+					seed,
+					cala: node.cala ? sanitizeCalaRecord(node.cala) : undefined,
+					matchKind: node.matchKind ?? seed?.matchKind ?? 'operator',
+				});
+			}
+		}
+	} catch {
+		// Missing or corrupt snapshot — start empty; seeds fill in on demand.
+	}
+
+	// Curated, source-preserving snapshots win over stale runtime rows.
+	for (const [key, bundled] of Object.entries(BUNDLED_CALA_RECORDS)) {
+		const existing = nodes.get(key);
+		const cala = sanitizeCalaRecord(bundled);
 		nodes.set(key, {
+			...existing,
 			key,
 			matchKind: cala.matchKind,
-			seed,
+			seed: existing?.seed ?? seedFromGroupKey(key),
 			cala,
 			lookupAttempted: true,
 			lookupAttemptedAt: cala.fetchedAt,
 		});
-	}
-	try {
-		const raw = await readFile(GRAPH_PATH, 'utf8');
-		const parsed = JSON.parse(raw) as PersistedGraph;
-		if (parsed.version !== GRAPH_VERSION || !parsed.nodes) return;
-		rateLimitedUntil = typeof parsed.rateLimitedUntil === 'number' ? parsed.rateLimitedUntil : 0;
-		backoffMs =
-			typeof parsed.backoffMs === 'number' && parsed.backoffMs >= MIN_BACKOFF_MS
-				? parsed.backoffMs
-				: MIN_BACKOFF_MS;
-		strike = typeof parsed.strike === 'number' && parsed.strike >= 0 ? parsed.strike : 0;
-		for (const [key, node] of Object.entries(parsed.nodes)) {
-			if (!node || typeof node !== 'object') continue;
-			const seed = node.seed ?? seedFromGroupKey(key);
-			nodes.set(key, {
-				...node,
-				key,
-				seed,
-				cala: node.cala ? sanitizeCalaRecord(node.cala) : undefined,
-				matchKind: node.matchKind ?? seed?.matchKind ?? 'operator',
-			});
-		}
-	} catch {
-		// Missing or corrupt snapshot — start empty; seeds fill in on demand.
 	}
 }
 
@@ -216,7 +221,11 @@ function sourced(field?: SourcedField): SourcedField | undefined {
 
 function sanitizeCalaRecord(cala: GraphCalaRecord): GraphCalaRecord {
 	const operator = sourced(cala.operator);
-	const country = sourced(cala.country);
+	const sourcedCountry = sourced(cala.country);
+	const country =
+		sourcedCountry?.value.trim().toLowerCase() === 'earth'
+			? undefined
+			: sourcedCountry;
 	const purpose = sourced(cala.purpose);
 	const filled = [operator, country, purpose].filter(Boolean).length;
 	const sources = new Map<string, CalaSource>();

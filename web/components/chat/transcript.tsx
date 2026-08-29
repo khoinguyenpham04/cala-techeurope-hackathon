@@ -106,13 +106,23 @@ function ToolPart({
     }
     return null;
   }
+  const displayName = part.toolName === WEB_SEARCH_TOOL ? "Web search" : part.toolName;
+  const errorText =
+    part.state === "output-error" && part.errorText
+      ? part.errorText.replace(/\bTavily\b/gi, "Web search")
+      : undefined;
   return (
     <Tool>
-      <ToolHeader state={part.state} toolName={part.toolName} type="dynamic-tool" />
+      <ToolHeader
+        state={part.state}
+        title={displayName}
+        toolName={part.toolName}
+        type="dynamic-tool"
+      />
       <ToolContent>
         <ToolInput input={part.input} />
         <ToolOutput
-          errorText={part.state === "output-error" ? part.errorText : undefined}
+          errorText={errorText}
           output={part.state === "output-available" ? part.output : undefined}
         />
       </ToolContent>

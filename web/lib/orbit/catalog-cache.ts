@@ -3,10 +3,10 @@ import { parseOmmCatalog } from "@/lib/orbit/omm";
 import type { OrbitCatalogResponse } from "@/lib/orbit/types";
 
 /**
- * Shipped CelesTrak `GROUP=stations` snapshot (ISS, CSS, visiting vehicles).
- * Downloaded once (2026-08-29) and loaded from this JSON — no runtime
- * CelesTrak fetch, no disk cache, no 403 backoff. SGP4 still runs at 1 Hz
- * so the Barcelona sky is current relative to these elements.
+ * Shipped local snapshot: CelesTrak stations + visual objects that can overfly
+ * Barcelona (~120 OMMs, 2026-08-29). Loaded from JSON — no runtime CelesTrak
+ * fetch. SGP4 still runs at 1 Hz so positions stay current relative to these
+ * elements. Wikipedia-style briefs live in `wiki-dossiers.ts`.
  */
 export function getOrbitCatalog(): OrbitCatalogResponse {
   const { records, dropped } = parseOmmCatalog(barcelonaOmm);

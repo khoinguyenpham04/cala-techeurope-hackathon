@@ -95,6 +95,8 @@ export interface SatelliteOverlay {
   evidenceState?: EvidenceState;
   /** Catalog seed paint — not Cala evidence. */
   seeded?: boolean;
+  /** Local Wikipedia-style paragraph for the story page. */
+  blurb?: string | null;
   sources?: Array<{
     name: string;
     url: string;

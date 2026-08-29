@@ -18,7 +18,10 @@ import {
   sessionKindFromId,
   useChatSessions,
 } from "@/lib/sessions";
-import type { StoryObjectIdentity } from "@/lib/sky/story-page";
+import {
+  questionCardsFromTurns,
+  type StoryObjectIdentity,
+} from "@/lib/sky/story-page";
 import { cn } from "@/lib/utils";
 import { useFlueAgent, type FlueConversationMessage } from "@flue/react";
 import { createFlueClient } from "@flue/sdk";
@@ -125,21 +128,31 @@ export function ChatWorkspace({
     return null;
   }, [agent.messages]);
 
-  const { userPrompt, lessonText, lessonStreaming } = useMemo(() => {
+  const { userPrompt, extraTexts, questionCards, lessonStreaming } = useMemo(() => {
     const user = latestByRole(agent.messages, "user");
     const assistant = latestByRole(agent.messages, "assistant");
+    const turns = agent.messages.flatMap((message) => {
+      if (message.role !== "user" && message.role !== "assistant") return [];
+      const text = textOf(message);
+      if (!text && message.role === "user") return [];
+      return [{ role: message.role, text: text ?? "" }];
+    });
+    const streaming =
+      working ||
+      Boolean(
+        assistant?.parts.some(
+          (part) =>
+            (part.type === "text" || part.type === "reasoning") &&
+            part.state === "streaming",
+        ),
+      );
     return {
       userPrompt: textOf(user),
-      lessonText: textOf(assistant),
-      lessonStreaming:
-        working ||
-        Boolean(
-          assistant?.parts.some(
-            (part) =>
-              (part.type === "text" || part.type === "reasoning") &&
-              part.state === "streaming",
-          ),
-        ),
+      extraTexts: agent.messages
+        .filter((message) => message.role === "assistant")
+        .map((message) => textOf(message)),
+      questionCards: questionCardsFromTurns({ turns, streaming }),
+      lessonStreaming: streaming,
     };
   }, [agent.messages, working]);
 
@@ -222,10 +235,11 @@ export function ChatWorkspace({
       {pane && !showLog ? (
         <SkyStoryCanvas
           dossier={dossier}
+          extraTexts={extraTexts}
           lessonStreaming={lessonStreaming}
-          lessonText={lessonText}
           noradId={session?.noradId ?? sky?.noradId}
           overlay={sky?.overlay}
+          questionCards={questionCards}
           satellite={objectIdentity}
           userPrompt={userPrompt}
         />
@@ -234,7 +248,7 @@ export function ChatWorkspace({
           density={pane ? "pane" : "page"}
           emptyDescription={
             satellite
-              ? "Answers come only from cited Cala evidence."
+              ? "Each question opens a new sourced card."
               : "Send a message to begin."
           }
           emptyTitle={satellite ? "Ask this satellite" : "Start the conversation"}
@@ -257,7 +271,7 @@ export function ChatWorkspace({
           textareaProps={{
             disabled: !agent.historyReady,
             placeholder: satellite
-              ? "Ask what Cala can verify about this object..."
+              ? "Ask a question — a new card will open..."
               : "Ask a sourced question...",
           }}
         />

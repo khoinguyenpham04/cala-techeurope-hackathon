@@ -701,7 +701,7 @@ function projectionFromIntrospection(intro: IntrospectionResponse): EntityQuery 
 	}
 	const incoming: Record<string, { limit: number }> = {};
 	for (const edge of intro.relationships.incoming ?? []) {
-		if (edgeLooksLike(edge, /PARENT|OWNER|SUBSIDIARY|OPERAT|BENEFICIARY|REGISTERED|HEADQUARTER|IS_DIRECT_OWNER|ULTIMATE_PARENT/)) {
+		if (edgeLooksLike(edge, /PARENT|SUBSIDIARY|OPERAT|REGISTERED|HEADQUARTER/)) {
 			incoming[edge] = { limit: 5 };
 		}
 	}
@@ -764,7 +764,8 @@ function persistResolved(object: CatalogObject, dossier: SatelliteDossier) {
 
 /**
  * Resolve one catalog object. Graph-first: reuse a constellation node forever.
- * Throws CalaError on halt conditions. On 429, callers should serve seed nodes.
+ * Throws CalaError on halt conditions. During a 429, serve the graph as-is:
+ * sourced cache when available, otherwise an explicit unknown dossier.
  */
 export async function resolveDossier(object: CatalogObject): Promise<SatelliteDossier> {
 	await ensureGraphHydrated();
@@ -779,13 +780,7 @@ export async function resolveDossier(object: CatalogObject): Promise<SatelliteDo
 
 	const rate = getRateLimitState();
 	if (rate.blocked) {
-		if (node?.seed) return dossierForObject(object);
-		throw new CalaError(
-			'rate_limited',
-			'Cala rate limit exceeded (HTTP 429). Halted; not retrying.',
-			429,
-			rate.retryAfterMs,
-		);
+		return dossierForObject(object);
 	}
 
 	const plan = searchPlan(object);

@@ -7,6 +7,7 @@ export interface SearchResult {
   title: string;
   url: string;
   snippet: string;
+  publisher?: string;
 }
 
 function readResults(output: unknown): SearchResult[] {
@@ -15,13 +16,18 @@ function readResults(output: unknown): SearchResult[] {
   if (!Array.isArray(results)) return [];
   return results.flatMap((entry) => {
     if (!entry || typeof entry !== "object") return [];
-    const { title, url, snippet } = entry as Record<string, unknown>;
+    const { title, url, snippet, publisher } = entry as Record<string, unknown>;
     if (typeof url !== "string" || !url) return [];
+    const name =
+      typeof publisher === "string" && publisher && !/tavily/i.test(publisher)
+        ? publisher
+        : undefined;
     return [
       {
         snippet: typeof snippet === "string" ? snippet : "",
-        title: typeof title === "string" && title ? title : url,
+        title: typeof title === "string" && title && !/tavily/i.test(title) ? title : url,
         url,
+        publisher: name,
       },
     ];
   });

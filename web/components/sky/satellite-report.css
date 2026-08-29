@@ -1,0 +1,159 @@
+.satellite-report {
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.satellite-report-card {
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity 260ms var(--ease-out),
+    transform 260ms var(--ease-out);
+}
+
+.satellite-report-card:nth-child(2) {
+  transition-delay: 70ms;
+}
+
+.satellite-report-card:nth-child(n + 3) {
+  transition-delay: 140ms;
+}
+
+@starting-style {
+  .satellite-report-card {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+.satellite-hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  min-height: 9.75rem;
+  background:
+    radial-gradient(ellipse 85% 70% at 50% 118%, color-mix(in oklab, var(--hero-accent) 55%, transparent), transparent 58%),
+    radial-gradient(ellipse at 50% -20%, oklch(0.46 0.08 250 / 0.5), oklch(0.24 0.03 260));
+}
+
+.satellite-hero-photo {
+  display: block;
+  width: 100%;
+  height: 9.75rem;
+  object-fit: cover;
+  outline: 1px solid oklch(1 0 0 / 0.1);
+  outline-offset: -1px;
+}
+
+.satellite-hero-photo-veil {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, oklch(0.16 0.02 260 / 0.55), transparent 55%);
+  pointer-events: none;
+}
+
+.satellite-hero-credit {
+  position: absolute;
+  right: 0.65rem;
+  bottom: 0.5rem;
+  z-index: 1;
+  max-width: calc(100% - 1.3rem);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.625rem;
+  letter-spacing: 0.02em;
+  color: oklch(1 0 0 / 0.72);
+}
+
+.satellite-hero-glyph {
+  position: relative;
+  height: 9.75rem;
+}
+
+.satellite-hero-earth {
+  position: absolute;
+  left: 50%;
+  bottom: -2.4rem;
+  width: 7.25rem;
+  height: 7.25rem;
+  translate: -50% 0;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 34% 30%, oklch(0.62 0.1 220), oklch(0.28 0.06 250) 62%, oklch(0.16 0.03 260));
+  box-shadow:
+    inset 0 0 0 1px oklch(1 0 0 / 0.08),
+    0 0 32px color-mix(in oklab, var(--hero-accent) 28%, transparent);
+}
+
+.satellite-hero-orbit {
+  position: absolute;
+  left: 50%;
+  top: 48%;
+  border: 1px solid oklch(1 0 0 / 0.28);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.satellite-hero-orbit-a {
+  width: 7.25rem;
+  height: 3.85rem;
+  transform: translate(-50%, -50%) rotate(-22deg);
+}
+
+.satellite-hero-orbit-b {
+  width: 10.75rem;
+  height: 5.5rem;
+  border-style: dashed;
+  opacity: 0.72;
+  transform: translate(-50%, -50%) rotate(16deg);
+}
+
+.satellite-hero-icon {
+  position: absolute;
+  left: 50%;
+  top: 34%;
+  color: var(--hero-accent);
+  filter: drop-shadow(0 0 10px color-mix(in oklab, var(--hero-accent) 70%, transparent));
+  transform: translate(-50%, -50%);
+}
+
+.satellite-hero-caption {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0.55rem;
+  text-align: center;
+  font-size: 0.625rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: oklch(1 0 0 / 0.78);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .satellite-hero-orbit-b {
+    animation: satellite-orbit-spin 32s linear infinite;
+  }
+}
+
+@keyframes satellite-orbit-spin {
+  from {
+    transform: translate(-50%, -50%) rotate(16deg);
+  }
+  to {
+    transform: translate(-50%, -50%) rotate(376deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .satellite-report-card {
+    transition: none;
+  }
+
+  @starting-style {
+    .satellite-report-card {
+      opacity: 1;
+      transform: none;
+    }
+  }
+}

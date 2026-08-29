@@ -56,8 +56,17 @@ export const SATELLITE_PICK_RADIUS = 0.14;
  */
 export const COBE_MAX_MARKERS = 480;
 
-/** DOM hit targets (CSS anchors). Search still selects anything in the catalog. */
-export const COBE_HIT_TARGET_MAX = 80;
+/** DOM satellite icons (CSS anchors). Search still selects anything in the catalog. */
+export const COBE_HIT_TARGET_MAX = 200;
+
+/**
+ * COBE marker size is relative to globe radius and must stay in 0.01–0.1.
+ * Size 0 breaks CSS anchoring. City stays a round canvas pin; satellites use a
+ * tiny in-range pin so `--cobe-{id}` still exists under the SVG overlay.
+ */
+export const COBE_CITY_MARKER_SIZE = 0.055;
+export const COBE_SAT_MARKER_SIZE = 0.01;
+export const COBE_SAT_SELECTED_MARKER_SIZE = 0.014;
 
 /** Short backoff after a network/timeout failure so we do not hammer the endpoint. */
 export const CELESTRAK_TRANSIENT_BACKOFF_MS = 60_000;

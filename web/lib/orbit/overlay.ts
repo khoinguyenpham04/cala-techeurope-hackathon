@@ -16,10 +16,11 @@ export type OverlayDossier = {
   purpose?: string | { value: string } | null;
   /** Explicit CSS color; wins over `colorKey` when set. */
   ownerColor?: string | null;
-  /** Cala slug (hashed) or a CSS color. Ignored when evidence is `unknown`. */
+  /** Cala slug (hashed) or a CSS color. Ignored when evidence is `unknown`, unless `seeded`. */
   colorKey?: string | null;
   /** Catalog seed paint — not Cala evidence. Overwritten when sourced. */
   seeded?: boolean;
+  blurb?: string | null;
   sources?: SatelliteOverlay["sources"];
 };
 
@@ -73,7 +74,7 @@ function looksLikeCssColor(value: string): boolean {
 }
 
 function ownerColorFor(row: OverlayDossier): string | null {
-  if (row.evidenceState === "unknown") return null;
+  if (row.evidenceState === "unknown" && row.seeded !== true) return null;
   const explicit = row.ownerColor?.trim();
   if (explicit) return explicit;
   const key = row.colorKey?.trim();
@@ -82,9 +83,9 @@ function ownerColorFor(row: OverlayDossier): string | null {
 }
 
 /**
- * Single Cala → globe overlay mapper. Dots stay grey until `ownerColor` is
- * set (verified/partial dossier with a color key). Unknowns stay in the
- * headline denominator because they never get a parent label here either.
+ * Overlay mapper for Cala dossiers and catalog/wiki seeds. Live Cala dots
+ * stay grey until evidence is verified/partial with a color key. Seeded
+ * briefs may paint immediately — they are catalog tone, not Cala verified.
  */
 export function overlayFromDossiers(dossiers: OverlayDossier[]): SatelliteOverlayMap {
   const map: SatelliteOverlayMap = {};
@@ -97,6 +98,7 @@ export function overlayFromDossiers(dossiers: OverlayDossier[]): SatelliteOverla
       purpose: fieldValue(row.purpose),
       evidenceState: row.evidenceState,
       seeded: row.seeded === true,
+      blurb: row.blurb?.trim() || null,
       sources: row.sources?.map((source) => ({
         name: source.name,
         url: source.url,

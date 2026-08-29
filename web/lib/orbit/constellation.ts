@@ -88,6 +88,23 @@ const NAME_PREFIXES = [
   "CSS",
   "HST",
   "SES",
+  "CREW DRAGON",
+  "PROGRESS",
+  "CYGNUS",
+  "SHENZHOU",
+  "TIANZHOU",
+  "FREGAT",
+  "DRAGON",
+  "SOYUZ",
+  "TERRA",
+  "AQUA",
+  "ENVISAT",
+  "ALOS",
+  "SEASAT",
+  "HELIOS",
+  "SAOCOM",
+  "SPACEMOBILE",
+  "ERS",
 ].sort((a, b) => b.length - a.length);
 
 export function constellationFromName(name: string | undefined): string | undefined {

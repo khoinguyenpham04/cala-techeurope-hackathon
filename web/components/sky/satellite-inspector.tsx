@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { SatelliteIcon } from "@/components/sky/satellite-icon";
 import { UNKNOWN_OWNER_COLOR } from "@/lib/orbit/constants";
 import { overlayFor } from "@/lib/orbit/overlay";
 import type { SatelliteOverlayMap, SlimOmm, VisibleSatellite } from "@/lib/orbit/types";
@@ -78,10 +79,11 @@ export function SatelliteInspector({
   onClose: () => void;
 }) {
   const dossier = overlayFor(overlay, satellite.noradId);
+  const seeded = dossier?.seeded === true;
   const operator = dossier?.operator?.trim() || "Unknown";
   const purpose = dossier?.purpose?.trim() || "Unknown";
   const parent = dossier?.ultimateParent?.trim() || "Unknown";
-  const evidence = dossier?.evidenceState ?? "unknown";
+  const evidence = seeded ? "catalog brief" : (dossier?.evidenceState ?? "unknown");
   const catalogUrl = `https://celestrak.org/NORAD/elements/gp.php?CATNR=${encodeURIComponent(satellite.noradId)}&FORMAT=JSON`;
 
   return (
@@ -144,7 +146,7 @@ export function SatelliteInspector({
             <Separator />
 
             <dl className="flex flex-col gap-1.5">
-              <Field label="Operator" value={operator} />
+              <Field label={seeded ? "Organization" : "Cala organization"} value={operator} />
               <Field label="Parent" value={parent} />
               <Field label="Purpose" value={purpose} />
               <Field label="Evidence" value={evidence} />
@@ -175,16 +177,22 @@ export function SatelliteInspector({
                 </a>
               ))}
               {(!dossier?.sources || dossier.sources.length === 0) && (
-                <p className="text-muted-foreground text-xs">No verified Cala sources yet.</p>
+                <p className="text-muted-foreground text-xs">
+                  {seeded ? "No extra sources on this catalog brief." : "No verified Cala sources yet."}
+                </p>
               )}
             </div>
 
             <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-              <span
-                className="size-2 rounded-full ring-1 ring-foreground/20"
-                style={{ backgroundColor: dossier?.ownerColor || UNKNOWN_OWNER_COLOR }}
+              <SatelliteIcon
+                className="size-3.5"
+                style={{ color: dossier?.ownerColor || UNKNOWN_OWNER_COLOR }}
               />
-              {dossier?.ownerColor ? "Verified owner color" : "Unknown owner"}
+              {dossier?.ownerColor
+                ? seeded
+                  ? "Catalog owner color"
+                  : "Verified owner color"
+                : "Unknown owner"}
             </div>
           </div>
         </ScrollArea>

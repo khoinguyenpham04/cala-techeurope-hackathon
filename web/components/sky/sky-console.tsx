@@ -33,8 +33,9 @@ export function SkyConsole({ children }: { children: ReactNode }) {
     }),
     [city.heightKm, city.latitudeDeg, city.longitudeDeg],
   );
-  // Barcelona demo: only payloads currently above the city.
-  const [horizonOnly, setHorizonOnly] = useState(true);
+  // Keep the full catalog available for the guaranteed demo pick. The city
+  // horizon remains one explicit toggle away.
+  const [horizonOnly, setHorizonOnly] = useState(false);
   const { visible, error: workerError } = useOrbitWorker(
     catalog?.records,
     observer,
@@ -45,7 +46,7 @@ export function SkyConsole({ children }: { children: ReactNode }) {
     setCityId(id);
   }, []);
   const demoNoradId = useMemo(() => {
-    const record = catalog?.records.find((row) => /^SENTINEL-/i.test(row.OBJECT_NAME));
+    const record = catalog?.records.find((row) => /^ISS \(ZARYA\)$/i.test(row.OBJECT_NAME));
     return record ? noradKey(record.NORAD_CAT_ID) : null;
   }, [catalog?.records]);
   const selectDemo = useCallback(() => {

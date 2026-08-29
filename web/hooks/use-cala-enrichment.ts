@@ -6,8 +6,9 @@ import {
 } from "@/lib/cala";
 import { noradKey } from "@/lib/orbit/omm";
 import { overlayFromDossiers } from "@/lib/orbit/overlay";
-import type { SatelliteOverlayMap, VisibleSatellite } from "@/lib/orbit/types";
-import { useEffect, useRef, useState } from "react";
+import type { SatelliteOverlay, SatelliteOverlayMap, VisibleSatellite } from "@/lib/orbit/types";
+import { wikiOverlayFor } from "@/lib/orbit/wiki-dossiers";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 const BATCH = 80;
 
@@ -26,7 +27,7 @@ export function useCalaEnrichment(
   visible: VisibleSatellite[],
   selectedNoradId: string | null,
 ): { overlay: SatelliteOverlayMap; halt: EnrichmentHalt | null } {
-  const [overlay, setOverlay] = useState<SatelliteOverlayMap>({});
+  const [calaOverlay, setCalaOverlay] = useState<SatelliteOverlayMap>({});
   const [halt, setHalt] = useState<EnrichmentHalt | null>(null);
   const done = useRef(new Set<string>());
   const inflight = useRef(new Set<string>());
@@ -75,7 +76,7 @@ export function useCalaEnrichment(
           for (const dossier of result.dossiers) {
             done.current.add(noradKey(dossier.noradId));
           }
-          setOverlay((prev) => ({ ...prev, ...mapped }));
+          setCalaOverlay((prev) => ({ ...prev, ...mapped }));
           const stop = result.halted ?? result.error;
           if (stop) {
             halted.current = true;
@@ -124,7 +125,7 @@ export function useCalaEnrichment(
         for (const dossier of result.dossiers) {
           done.current.add(noradKey(dossier.noradId));
         }
-        setOverlay((previous) => ({ ...previous, ...mapped }));
+        setCalaOverlay((previous) => ({ ...previous, ...mapped }));
       })
       .finally(() => {
         inflight.current.delete(selectedNoradId);
@@ -135,5 +136,46 @@ export function useCalaEnrichment(
     };
   }, [selectedNoradId, visibleKey]);
 
+  const wiki = useMemo(() => wikiOverlayFor(visible), [visible, visibleKey]);
+  const overlay = useMemo(
+    () => mergeWikiAndCala(wiki, calaOverlay),
+    [wiki, calaOverlay],
+  );
+
   return { overlay, halt };
+}
+
+function calaHasClaim(row: SatelliteOverlay): boolean {
+  return (
+    row.evidenceState === "verified" ||
+    row.evidenceState === "partial" ||
+    (row.seeded !== true &&
+      Boolean(row.operator?.trim() || row.ultimateParent?.trim() || row.purpose?.trim()))
+  );
+}
+
+function mergeWikiAndCala(
+  wiki: SatelliteOverlayMap,
+  cala: SatelliteOverlayMap,
+): SatelliteOverlayMap {
+  const merged: SatelliteOverlayMap = { ...wiki };
+  for (const [noradId, row] of Object.entries(cala)) {
+    const base = wiki[noradId];
+    if (!calaHasClaim(row)) {
+      if (base) {
+        merged[noradId] = {
+          ...base,
+          sources: row.sources?.length ? row.sources : base.sources,
+        };
+      }
+      continue;
+    }
+    merged[noradId] = {
+      ...base,
+      ...row,
+      blurb: row.blurb ?? base?.blurb,
+      seeded: false,
+    };
+  }
+  return merged;
 }

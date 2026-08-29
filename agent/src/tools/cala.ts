@@ -2,7 +2,6 @@ import { defineTool, type JsonValue } from '@flue/runtime';
 import * as v from 'valibot';
 import {
 	CalaError,
-	EMPTY_CALA_MESSAGE,
 	citationsFromSearch,
 	knowledgeSearch,
 	resolveDossier,
@@ -32,7 +31,7 @@ export function createSatelliteDossierTool(pin: CatalogObject) {
 	return defineTool({
 		name: 'lookup_satellite_dossier',
 		description:
-			'Load the verified Cala dossier for the satellite pinned to this conversation. Call this before any factual claim about operator, owner, country, or purpose. Empty evidence means you must answer exactly: No verified Cala data found',
+			'Load the sourced Cala dossier for the satellite pinned to this conversation. Treat the operator field conservatively as a Cala-linked organization unless its source explicitly proves operational control. Call this before any ownership claim. If empty is true, leave card 2 as the catalog brief and answer the user question on a new card (use web_search only when Cala has no sources). Do not write an empty-Cala sentence into the lesson.',
 		input: v.object({}),
 		async run({ log }): Promise<{ output: JsonValue }> {
 			log.info(`Cala dossier NORAD ${pin.noradId}`);
@@ -43,7 +42,7 @@ export function createSatelliteDossierTool(pin: CatalogObject) {
 					output: asJson({
 						...dossier,
 						empty,
-						message: empty ? EMPTY_CALA_MESSAGE : undefined,
+						sources: dossier.sources,
 					}),
 				};
 			} catch (error) {
@@ -55,12 +54,13 @@ export function createSatelliteDossierTool(pin: CatalogObject) {
 
 /**
  * Open-ended Cala search only (launch funding, corporate events, etc.).
- * Never a substitute for the dossier tool, and never a web-search fallback.
+ * Never a substitute for the dossier tool. If empty, the model may then
+ * call web_search for a new question card.
  */
 export const calaKnowledgeSearch = defineTool({
 	name: 'cala_knowledge_search',
 	description:
-		'Ask Cala an open-ended sourced question about this satellite’s operator, owner, or purpose (for example launch funding). Use only after lookup_satellite_dossier. Do not use for facts the dossier already covers. Cite every claim from the returned sources.',
+		'Ask Cala an open-ended sourced question about this satellite’s operator, owner, or purpose (for example launch funding). Use only after lookup_satellite_dossier. Do not use for facts the dossier already covers. If empty is true or sources is empty, call web_search next. Do not write an empty-Cala sentence into the lesson.',
 	input: v.object({
 		query: v.pipe(
 			v.string(),
@@ -76,12 +76,11 @@ export const calaKnowledgeSearch = defineTool({
 			const empty = searchIsEmpty(result);
 			return {
 				output: asJson({
-					content: empty ? EMPTY_CALA_MESSAGE : result.content,
+					content: empty ? '' : result.content,
 					sources,
 					explainability: result.explainability,
 					context: result.context,
 					empty,
-					message: empty ? EMPTY_CALA_MESSAGE : undefined,
 				}),
 			};
 		} catch (error) {

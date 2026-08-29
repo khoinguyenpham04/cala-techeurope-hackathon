@@ -2,8 +2,24 @@
 
 import "@/components/sky/cobe-globe.css";
 
-import { markerIdForNorad, lerpAngle, locationToAngles } from "@/lib/orbit/cobe-view";
-import { COBE_MAX_MARKERS, COBE_HIT_TARGET_MAX } from "@/lib/orbit/constants";
+import { SatelliteIcon } from "@/components/sky/satellite-icon";
+import {
+  CITY_MARKER_ID,
+  LOOK_ARC_ID,
+  cobeArcStyle,
+  cobeMarkerStyle,
+  lerpAngle,
+  locationToAngles,
+  lookArcStations,
+  markerIdForNorad,
+} from "@/lib/orbit/cobe-view";
+import {
+  COBE_CITY_MARKER_SIZE,
+  COBE_HIT_TARGET_MAX,
+  COBE_MAX_MARKERS,
+  COBE_SAT_MARKER_SIZE,
+  COBE_SAT_SELECTED_MARKER_SIZE,
+} from "@/lib/orbit/constants";
 import { cssColorToRgb } from "@/lib/orbit/css-color";
 import { overlayFor, resolveDotColor } from "@/lib/orbit/overlay";
 import {
@@ -18,8 +34,8 @@ import createGlobe, { type Arc, type COBEOptions, type Marker } from "cobe";
 import { useTheme } from "next-themes";
 import { useEffect, useMemo, useRef } from "react";
 
-const CITY_MARKER_ID = "city";
 const SELECTED_RGB: [number, number, number] = [0.29, 0.871, 0.502];
+const SELECTED_CSS = "rgb(74 222 128)";
 const CITY_RGB: [number, number, number] = [0.2, 0.4, 1];
 const ARC_RGB: [number, number, number] = [0.35, 0.55, 1];
 const geoScratch: GeodeticScratch = { latitudeDeg: 0, longitudeDeg: 0, altitudeKm: 0 };
@@ -95,20 +111,30 @@ export function GlobeScene({
 
   const hits = useMemo(() => {
     const seen = new Set<string>();
-    const rows: Array<{ noradId: string; name: string }> = [];
+    const rows: Array<{ noradId: string; name: string; color: string; selected: boolean }> = [];
     const selected = visible.find((sat) => sat.noradId === selectedNoradId);
     if (selected) {
-      rows.push({ noradId: selected.noradId, name: selected.name });
+      rows.push({
+        noradId: selected.noradId,
+        name: selected.name,
+        color: SELECTED_CSS,
+        selected: true,
+      });
       seen.add(selected.noradId);
     }
     for (const sat of visible) {
       if (rows.length >= COBE_HIT_TARGET_MAX) break;
       if (seen.has(sat.noradId)) continue;
       seen.add(sat.noradId);
-      rows.push({ noradId: sat.noradId, name: sat.name });
+      rows.push({
+        noradId: sat.noradId,
+        name: sat.name,
+        color: resolveDotColor(overlayFor(overlay, sat.noradId)),
+        selected: false,
+      });
     }
     return rows;
-  }, [visible, selectedNoradId]);
+  }, [visible, selectedNoradId, overlay]);
 
   const selected = selectedNoradId
     ? visible.find((sat) => sat.noradId === selectedNoradId)
@@ -163,8 +189,8 @@ export function GlobeScene({
       markers: [],
       arcs: [],
       arcColor: ARC_RGB,
-      arcWidth: 0.45,
-      arcHeight: 0.28,
+      arcWidth: 0.5,
+      arcHeight: 0.62,
       markerElevation: 0.02,
       scale,
       opacity: 1,
@@ -185,7 +211,7 @@ export function GlobeScene({
       markers.push({
         id: CITY_MARKER_ID,
         location: [cityNow.latitudeDeg, cityNow.longitudeDeg],
-        size: 0.055,
+        size: COBE_CITY_MARKER_SIZE,
         color: CITY_RGB,
       });
 
@@ -199,7 +225,7 @@ export function GlobeScene({
         markers.push({
           id: markerIdForNorad(noradId),
           location,
-          size: isSelected ? 0.08 : 0.022,
+          size: isSelected ? COBE_SAT_SELECTED_MARKER_SIZE : COBE_SAT_MARKER_SIZE,
           color: isSelected
             ? SELECTED_RGB
             : cssColorToRgb(resolveDotColor(overlayFor(overlayMap, noradId))),
@@ -214,7 +240,7 @@ export function GlobeScene({
           markers.push({
             id: markerIdForNorad(selectedId),
             location: selectedLocation,
-            size: 0.08,
+            size: COBE_SAT_SELECTED_MARKER_SIZE,
             color: SELECTED_RGB,
           });
           break;
@@ -222,12 +248,20 @@ export function GlobeScene({
       }
 
       if (selectedLocation) {
-        arcs.push({
-          id: "look",
-          from: [cityNow.latitudeDeg, cityNow.longitudeDeg],
-          to: selectedLocation,
-          color: SELECTED_RGB,
-        });
+        const stations = lookArcStations(
+          cityNow.latitudeDeg,
+          cityNow.longitudeDeg,
+          selectedLocation[0],
+          selectedLocation[1],
+        );
+        for (let index = 0; index < stations.length - 1; index += 1) {
+          arcs.push({
+            id: index === 0 ? LOOK_ARC_ID : undefined,
+            from: stations[index]!,
+            to: stations[index + 1]!,
+            color: SELECTED_RGB,
+          });
+        }
       }
     };
 
@@ -309,41 +343,40 @@ export function GlobeScene({
         aria-label="Satellite globe"
         ref={canvasRef}
       />
-      <div
-        className="sky-cobe-label"
-        style={{
-          positionAnchor: `--cobe-${CITY_MARKER_ID}`,
-          opacity: `var(--cobe-visible-${CITY_MARKER_ID}, 0)`,
-        }}
-      >
+      <div className="sky-cobe-label" style={cobeMarkerStyle(CITY_MARKER_ID)}>
         {city.name}
       </div>
       {selected ? (
         <div
           className="sky-cobe-label"
-          style={{
-            positionAnchor: `--cobe-${markerIdForNorad(selected.noradId)}`,
-            opacity: `var(--cobe-visible-${markerIdForNorad(selected.noradId)}, 0)`,
-          }}
+          style={cobeMarkerStyle(markerIdForNorad(selected.noradId))}
         >
           {selected.name}
+        </div>
+      ) : null}
+      {selected ? (
+        <div className="sky-cobe-label" style={cobeArcStyle(LOOK_ARC_ID)}>
+          {city.name} → {selected.name}
         </div>
       ) : null}
       {hits.map((hit) => (
         <button
           aria-label={hit.name}
           className="sky-cobe-hit"
+          data-selected={hit.selected ? "true" : undefined}
           key={hit.noradId}
           onClick={(event) => {
             event.stopPropagation();
             onSelect(hit.noradId);
           }}
           style={{
-            positionAnchor: `--cobe-${markerIdForNorad(hit.noradId)}`,
-            opacity: `var(--cobe-visible-${markerIdForNorad(hit.noradId)}, 0)`,
+            ...cobeMarkerStyle(markerIdForNorad(hit.noradId)),
+            color: hit.color,
           }}
           type="button"
-        />
+        >
+          <SatelliteIcon className="size-full" />
+        </button>
       ))}
     </div>
   );

@@ -1,5 +1,6 @@
 "use client";
 
+import { SatelliteIcon } from "@/components/sky/satellite-icon";
 import { SatelliteInspector } from "@/components/sky/satellite-inspector";
 import { SatelliteSearch } from "@/components/sky/satellite-search";
 import { SatelliteTelemetry } from "@/components/sky/satellite-telemetry";
@@ -43,8 +44,8 @@ function enrichmentHaltLabel(
   hasCachedEvidence: boolean,
 ): string {
   const fallback = hasCachedEvidence
-    ? "Showing cached Cala evidence; unsupported claims remain unknown."
-    : "Unsupported claims remain unknown.";
+    ? "Showing cached Cala evidence; catalog briefs still fill the page."
+    : "Catalog briefs still fill the page; Cala-cited ownership is paused.";
   if (halt.code === "rate_limited") return `Live Cala is resting. ${fallback}`;
   if (halt.code === "timeout") return `Live Cala timed out. ${fallback}`;
   if (halt.code === "unconfigured") return `Live Cala is not configured. ${fallback}`;
@@ -212,13 +213,13 @@ export function SkyHud({
           {selected ? <SatelliteTelemetry satellite={selected} /> : null}
           <HudChrome className="flex flex-col gap-1.5 px-3 py-2 text-[11px]">
             <p className="text-[10px] font-medium tracking-[0.14em] text-muted-foreground uppercase">
-              Operators
+              Organizations
             </p>
             {legend.map((entry) => (
               <div className="flex items-center gap-2" key={entry.label}>
-                <span
-                  className="size-2 shrink-0 rounded-full ring-1 ring-foreground/20"
-                  style={{ backgroundColor: entry.color }}
+                <SatelliteIcon
+                  className="size-3 shrink-0"
+                  style={{ color: entry.color }}
                 />
                 <span className="min-w-0 truncate" title={entry.label}>
                   {entry.label}
@@ -226,9 +227,9 @@ export function SkyHud({
               </div>
             ))}
             <div className="flex items-center gap-2">
-              <span
-                className="size-2 shrink-0 rounded-full ring-1 ring-foreground/20"
-                style={{ backgroundColor: UNKNOWN_OWNER_COLOR }}
+              <SatelliteIcon
+                className="size-3 shrink-0"
+                style={{ color: UNKNOWN_OWNER_COLOR }}
               />
               <span className="text-muted-foreground">Unknown owner</span>
             </div>

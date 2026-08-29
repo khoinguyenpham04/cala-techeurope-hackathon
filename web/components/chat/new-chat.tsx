@@ -27,7 +27,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 const SATELLITE_SUGGESTIONS = [
-  "Who operates this object, and what can you verify?",
+  "Which organization is linked to this object, and what can you verify?",
   "Which country is the operator associated with?",
   "What is this satellite family used for?",
 ];
@@ -177,7 +177,7 @@ export function NewChat({
           {waitingForSelection
             ? "Choose an object on the globe to open a sourced accountability brief."
             : satelliteMode
-              ? "Answers come only from cited Cala evidence. Unknown stays unknown."
+              ? "Each question opens a new sourced card. Catalog rows stay on the first two cards."
               : "Explore the organizations behind the infrastructure orbiting Earth."}
         </p>
       </div>
@@ -195,7 +195,7 @@ export function NewChat({
             autoFocus: !pane,
             disabled: waitingForSelection,
             placeholder: satelliteMode
-              ? "Ask what Cala can verify about this object..."
+              ? "Ask a question — a new card will open..."
               : waitingForSelection
                 ? "Select an object to ask a sourced question..."
                 : "Select an object to begin...",
